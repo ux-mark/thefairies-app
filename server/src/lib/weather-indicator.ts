@@ -12,8 +12,8 @@ import { getOne, run } from '../db/index.js'
  * https://openweathermap.org/weather-conditions
  */
 export const WEATHER_COLORS: Record<string, { color: string; name: string; hex: string; description: string }> = {
-  // Clear sky (800) — teal/cyan (user's original LIFX scene colour)
-  clear: { color: 'hue:175 saturation:0.7 brightness:0.9', name: 'Clear / Sunny', hex: '#45e6d8', description: 'Clear sky' },
+  // Clear sky (800) — warm golden yellow (sunny!)
+  clear: { color: 'hue:50 saturation:0.9 brightness:1.0', name: 'Clear / Sunny', hex: '#ffd919', description: 'Clear sky' },
 
   // Few/scattered clouds (801-802) — olive/warm yellow (user's original)
   few_clouds: { color: 'hue:50 saturation:0.6 brightness:0.7', name: 'Some Clouds', hex: '#b3a147', description: '11-50% cloud cover' },
