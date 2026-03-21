@@ -353,10 +353,10 @@ export const api = {
     allOff: () => fetchApi<{ success: boolean; actions: string[] }>('/system/all-off', { method: 'POST' }),
     nighttime: () => fetchApi<{ success: boolean; mode: string; excludeRooms: string[]; actions: string[] }>('/system/nighttime', { method: 'POST' }),
     guestNight: () => fetchApi<{ success: boolean; mode: string; excludeRooms: string[]; actions: string[] }>('/system/guest-night', { method: 'POST' }),
-    getMtaStatus: (station?: string, direction?: string) =>
-      fetchApi<MtaStatus>(`/system/mta/status?station=${station || '120'}&direction=${direction || 'S'}`),
-    getMtaArrivals: (station?: string, direction?: string) =>
-      fetchApi<SubwayArrival[]>(`/system/mta/arrivals?station=${station || '120'}&direction=${direction || 'both'}`),
+    getMtaStatus: (station?: string, direction?: string, routes?: string) =>
+      fetchApi<MtaStatus>(`/system/mta/status?station=${station || '120'}&direction=${direction || 'S'}${routes ? '&routes=' + routes : ''}`),
+    getMtaArrivals: (station?: string, direction?: string, routes?: string) =>
+      fetchApi<SubwayArrival[]>(`/system/mta/arrivals?station=${station || '120'}&direction=${direction || 'both'}${routes ? '&routes=' + routes : ''}`),
     getLogs: (limit?: number, category?: string) => {
       const params = new URLSearchParams()
       if (limit) params.set('limit', String(limit))

@@ -545,6 +545,7 @@ function SubwaySection() {
 
   const stationId = prefs?.mta_station || '120'
   const direction = prefs?.mta_direction || 'S'
+  const mtaRoutes = prefs?.mta_routes || '1'
 
   return (
     <Section title="Subway">
@@ -587,6 +588,19 @@ function SubwaySection() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-heading text-sm">Routes</p>
+            <p className="text-caption text-xs">Comma-separated route IDs (e.g. 1 or 1,2,3)</p>
+          </div>
+          <input
+            type="text"
+            value={mtaRoutes}
+            onChange={e => mutation.mutate({ key: 'mta_routes', value: e.target.value })}
+            className="input-field w-24 rounded-lg border px-3 py-2 text-sm text-center focus:border-fairy-500 focus:outline-none"
+          />
         </div>
 
         <div className="flex items-center gap-2 text-sm text-caption">

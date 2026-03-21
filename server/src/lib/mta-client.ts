@@ -42,11 +42,19 @@ export const mtaClient = {
    * @param feedGroup - Which feed to query (default: "123456S" for 1/2/3 lines)
    * @param maxMinutes - Only return arrivals within this many minutes (default: 30)
    */
+  /**
+   * @param stationId - Base stop ID (e.g. "120" for 103rd St)
+   * @param direction - "N" (uptown), "S" (downtown), or "both"
+   * @param feedGroup - Which feed to query (default: "123456S")
+   * @param maxMinutes - Only return arrivals within this many minutes
+   * @param routes - Optional: filter to only these route IDs (e.g. ["1"] for 103rd St which is 1-only)
+   */
   async getArrivals(
     stationId: string = '120',
     direction: string = 'both',
     feedGroup: string = '123456S',
     maxMinutes: number = 30,
+    routes?: string[],
   ): Promise<SubwayArrival[]> {
     const feedUrl = FEED_URLS[feedGroup]
     if (!feedUrl) throw new Error(`Unknown feed group: ${feedGroup}`)
@@ -61,6 +69,9 @@ export const mtaClient = {
       if (!tripUpdate) continue
 
       const routeId = tripUpdate.trip?.routeId ?? ''
+
+      // Filter by route if specified (e.g. only "1" for local-only stations)
+      if (routes && routes.length > 0 && !routes.includes(routeId)) continue
 
       for (const stopTimeUpdate of tripUpdate.stopTimeUpdate ?? []) {
         const stopId = stopTimeUpdate.stopId ?? ''
@@ -102,12 +113,13 @@ export const mtaClient = {
   async getStatus(
     stationId: string = '120',
     direction: string = 'S',
+    routes?: string[],
   ): Promise<{
     status: 'green' | 'orange' | 'red'
     nextArrival: SubwayArrival | null
     arrivals: SubwayArrival[]
   }> {
-    const arrivals = await this.getArrivals(stationId, direction)
+    const arrivals = await this.getArrivals(stationId, direction, '123456S', 30, routes)
     const next = arrivals[0] ?? null
 
     let status: 'green' | 'orange' | 'red' = 'red'

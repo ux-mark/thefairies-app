@@ -338,10 +338,11 @@ function MtaCard() {
 
   const station = prefs?.mta_station || '120'
   const direction = prefs?.mta_direction || 'S'
+  const mtaRoutes = prefs?.mta_routes || '1'
 
   const { data: mtaStatus } = useQuery({
-    queryKey: ['mta', 'status', station, direction],
-    queryFn: () => api.system.getMtaStatus(station, direction),
+    queryKey: ['mta', 'status', station, direction, mtaRoutes],
+    queryFn: () => api.system.getMtaStatus(station, direction, mtaRoutes),
     retry: false,
     staleTime: 30_000,
     refetchInterval: 30_000,

@@ -363,7 +363,9 @@ router.get('/mta/arrivals', async (req: Request, res: Response) => {
     const station = (req.query.station as string) || '120'
     const direction = (req.query.direction as string) || 'both'
     const feed = (req.query.feed as string) || '123456S'
-    const arrivals = await mtaClient.getArrivals(station, direction, feed)
+    const routesParam = req.query.routes as string | undefined
+    const routes = routesParam ? routesParam.split(',') : undefined
+    const arrivals = await mtaClient.getArrivals(station, direction, feed, 30, routes)
     res.json(arrivals.slice(0, Number(req.query.limit) || 10))
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -376,7 +378,9 @@ router.get('/mta/status', async (req: Request, res: Response) => {
   try {
     const station = (req.query.station as string) || '120'
     const direction = (req.query.direction as string) || 'S'
-    const result = await mtaClient.getStatus(station, direction)
+    const routesParam = req.query.routes as string | undefined
+    const routes = routesParam ? routesParam.split(',') : undefined
+    const result = await mtaClient.getStatus(station, direction, routes)
     res.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
