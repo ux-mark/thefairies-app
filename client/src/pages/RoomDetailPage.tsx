@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -14,6 +14,8 @@ import {
   Search,
   ToggleLeft,
   Activity,
+  CheckSquare,
+  Square,
 } from 'lucide-react'
 import * as Switch from '@radix-ui/react-switch'
 import * as Tabs from '@radix-ui/react-tabs'
@@ -21,6 +23,7 @@ import { api } from '@/lib/api'
 import type { Light, LightAssignment, RoomDetail, Sensor, Room, HubDevice, DeviceRoomAssignment } from '@/lib/api'
 import { cn, getLightColorHex } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
+import { CollapsibleDeviceGroup } from '@/components/ui/CollapsibleDeviceGroup'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,53 +37,136 @@ function toAssignment(light: Light): LightAssignment {
   }
 }
 
-// ── Available light card ─────────────────────────────────────────────────────
+// ── Sticky search input ─────────────────────────────────────────────────────
+
+function StickySearch({
+  value,
+  onChange,
+  placeholder,
+  matchSummary,
+}: {
+  value: string
+  onChange: (val: string) => void
+  placeholder: string
+  matchSummary?: string
+}) {
+  return (
+    <div className="sticky top-0 z-10 pb-3 pt-1 chrome">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" />
+        <input
+          type="search"
+          placeholder={placeholder}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface pl-10 pr-10 text-sm text-heading placeholder:text-caption focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-caption hover:text-heading transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+            aria-label="Clear search"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {matchSummary && value.trim() && (
+        <p className="mt-1.5 text-[11px] text-caption">{matchSummary}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Compact available light row ─────────────────────────────────────────────
 
 function AvailableLightRow({
   light,
   onAdd,
   onIdentify,
+  selected,
+  onToggleSelect,
+  multiSelectMode,
+  assignedToRoom,
 }: {
   light: Light
   onAdd: () => void
   onIdentify: () => void
+  selected?: boolean
+  onToggleSelect?: () => void
+  multiSelectMode?: boolean
+  assignedToRoom?: string
 }) {
   const isOn = light.power === 'on'
   const colorHex = getLightColorHex(light)
+  const isAssignedElsewhere = !!assignedToRoom
 
   return (
-    <div className="flex items-center gap-3 rounded-lg card border/50 px-3 py-2.5 transition-colors hover:border-[var(--border-secondary)]">
+    <div
+      className={cn(
+        'flex h-[44px] items-center gap-2 rounded-lg px-3 transition-colors',
+        isAssignedElsewhere
+          ? 'opacity-50'
+          : 'card border/50 hover:border-[var(--border-secondary)]',
+        selected && 'ring-1 ring-fairy-500 bg-fairy-500/5',
+      )}
+    >
+      {multiSelectMode && !isAssignedElsewhere && (
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          className="shrink-0 text-body hover:text-fairy-400 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          aria-label={selected ? `Deselect ${light.label}` : `Select ${light.label}`}
+        >
+          {selected ? (
+            <CheckSquare className="h-4 w-4 text-fairy-400" />
+          ) : (
+            <Square className="h-4 w-4" />
+          )}
+        </button>
+      )}
       <div
         className={cn('h-4 w-4 shrink-0 rounded-full', !isOn && 'opacity-30')}
         style={{ backgroundColor: isOn ? colorHex : '#475569' }}
         aria-hidden="true"
       />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-heading">
-          {light.label}
-        </p>
-        <p className="truncate text-xs text-caption">{light.group.name}</p>
-      </div>
-      {light.connected ? (
-        <Wifi className="h-3 w-3 shrink-0 text-fairy-500" />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-heading">
+        {light.label}
+      </span>
+      {isAssignedElsewhere ? (
+        <span className="shrink-0 truncate text-[10px] text-caption">
+          In {assignedToRoom}
+        </span>
       ) : (
-        <WifiOff className="h-3 w-3 shrink-0 text-red-400" />
+        <>
+          <span className="hidden shrink-0 rounded-full bg-[var(--border-secondary)] px-2 py-0.5 text-[10px] font-medium text-body sm:inline-flex">
+            {light.group.name}
+          </span>
+          {light.connected ? (
+            <Wifi className="h-3 w-3 shrink-0 text-fairy-500" />
+          ) : (
+            <WifiOff className="h-3 w-3 shrink-0 text-red-400" />
+          )}
+          <button
+            onClick={onIdentify}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-body transition-colors hover:surface hover:text-fairy-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+            aria-label={`Identify ${light.label}`}
+            title="Flash this light"
+          >
+            <Zap className="h-4 w-4" />
+          </button>
+          {!multiSelectMode && (
+            <button
+              onClick={onAdd}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-fairy-500/15 text-fairy-400 transition-colors hover:bg-fairy-500/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+              aria-label={`Assign ${light.label} to this room`}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
+        </>
       )}
-      <button
-        onClick={onIdentify}
-        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-body transition-colors hover:surface hover:text-fairy-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-        aria-label={`Identify ${light.label}`}
-        title="Flash this light"
-      >
-        <Zap className="h-4 w-4" />
-      </button>
-      <button
-        onClick={onAdd}
-        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-fairy-500/15 text-fairy-400 transition-colors hover:bg-fairy-500/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-        aria-label={`Assign ${light.label} to this room`}
-      >
-        <Plus className="h-4 w-4" />
-      </button>
     </div>
   )
 }
@@ -188,30 +274,55 @@ function AssignedDeviceRow({
   )
 }
 
-// ── Available device row ────────────────────────────────────────────────────
+// ── Compact available device row ────────────────────────────────────────────
 
 function AvailableDeviceRow({
   device,
   onAdd,
+  selected,
+  onToggleSelect,
+  multiSelectMode,
 }: {
   device: HubDevice
   onAdd: () => void
+  selected?: boolean
+  onToggleSelect?: () => void
+  multiSelectMode?: boolean
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg card border/50 px-3 py-2.5 transition-colors hover:border-[var(--border-secondary)]">
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-heading">
-          {device.label}
-        </p>
-      </div>
+    <div
+      className={cn(
+        'flex h-[44px] items-center gap-2 rounded-lg px-3 transition-colors card border/50 hover:border-[var(--border-secondary)]',
+        selected && 'ring-1 ring-fairy-500 bg-fairy-500/5',
+      )}
+    >
+      {multiSelectMode && (
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          className="shrink-0 text-body hover:text-fairy-400 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          aria-label={selected ? `Deselect ${device.label}` : `Select ${device.label}`}
+        >
+          {selected ? (
+            <CheckSquare className="h-4 w-4 text-fairy-400" />
+          ) : (
+            <Square className="h-4 w-4" />
+          )}
+        </button>
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-heading">
+        {device.label}
+      </span>
       <DeviceTypeBadge type={device.device_type} />
-      <button
-        onClick={onAdd}
-        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-fairy-500/15 text-fairy-400 transition-colors hover:bg-fairy-500/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-        aria-label={`Assign ${device.label} to this room`}
-      >
-        <Plus className="h-4 w-4" />
-      </button>
+      {!multiSelectMode && (
+        <button
+          onClick={onAdd}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-fairy-500/15 text-fairy-400 transition-colors hover:bg-fairy-500/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          aria-label={`Assign ${device.label} to this room`}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }
@@ -230,6 +341,12 @@ export default function RoomDetailPage() {
 
   // Active device tab
   const [activeTab, setActiveTab] = useState('lights')
+
+  // Multi-select state
+  const [lightMultiSelect, setLightMultiSelect] = useState(false)
+  const [selectedLightIds, setSelectedLightIds] = useState<Set<string>>(new Set())
+  const [deviceMultiSelect, setDeviceMultiSelect] = useState(false)
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set())
 
   // Fetch room detail
   const { data: room, isLoading: roomLoading } = useQuery({
@@ -302,35 +419,69 @@ export default function RoomDetailPage() {
     )
   }, [assigned, room])
 
-  // IDs already assigned to ANY room
-  const assignedToOtherRooms = useMemo(() => {
-    if (!allAssignments) return new Set<string>()
-    return new Set(
-      allAssignments
-        .filter(a => a.room_name !== name)
-        .map(a => a.light_id),
-    )
+  // Map of light ID -> room name for lights assigned to OTHER rooms
+  const lightToOtherRoom = useMemo(() => {
+    if (!allAssignments) return new Map<string, string>()
+    const map = new Map<string, string>()
+    for (const a of allAssignments) {
+      if (a.room_name !== name) {
+        map.set(a.light_id, a.room_name)
+      }
+    }
+    return map
   }, [allAssignments, name])
 
-  // Lights available to assign (not assigned to any room), grouped by LIFX group
+  // IDs already assigned to ANY room
+  const assignedToOtherRooms = useMemo(() => {
+    return new Set(lightToOtherRoom.keys())
+  }, [lightToOtherRoom])
+
+  // Lights available to assign (not assigned to this room), split into free + assigned-elsewhere
   const availableLights = useMemo(() => {
     if (!allLights) return []
     const assignedIds = new Set(effectiveAssigned.map(a => a.id))
-    return allLights.filter(
-      l => !assignedIds.has(l.id) && !assignedToOtherRooms.has(l.id),
-    )
-  }, [allLights, effectiveAssigned, assignedToOtherRooms])
+    return allLights.filter(l => !assignedIds.has(l.id))
+  }, [allLights, effectiveAssigned])
 
-  // Group available lights by LIFX group
+  // Group available lights by LIFX group (only unassigned ones for grouping)
   const availableByGroup = useMemo(() => {
     const groups = new Map<string, Light[]>()
     for (const light of availableLights) {
+      if (assignedToOtherRooms.has(light.id)) continue // these go in a separate section
       const groupName = light.group.name || 'Ungrouped'
       if (!groups.has(groupName)) groups.set(groupName, [])
       groups.get(groupName)!.push(light)
     }
     return groups
-  }, [availableLights])
+  }, [availableLights, assignedToOtherRooms])
+
+  // Lights assigned to other rooms (shown but not assignable)
+  const lightsInOtherRooms = useMemo(() => {
+    return availableLights.filter(l => assignedToOtherRooms.has(l.id))
+  }, [availableLights, assignedToOtherRooms])
+
+  // All lights in each LIFX group (to check "fully assigned")
+  const allLightsByGroup = useMemo(() => {
+    if (!allLights) return new Map<string, Light[]>()
+    const groups = new Map<string, Light[]>()
+    for (const light of allLights) {
+      const groupName = light.group.name || 'Ungrouped'
+      if (!groups.has(groupName)) groups.set(groupName, [])
+      groups.get(groupName)!.push(light)
+    }
+    return groups
+  }, [allLights])
+
+  // Check if a LIFX group is fully assigned to this room
+  const isGroupFullyAssigned = useCallback(
+    (groupName: string) => {
+      const groupLights = allLightsByGroup.get(groupName)
+      if (!groupLights || groupLights.length === 0) return false
+      const assignedIds = new Set(effectiveAssigned.map(a => a.id))
+      return groupLights.every(l => assignedIds.has(l.id))
+    },
+    [allLightsByGroup, effectiveAssigned],
+  )
 
   // Filter assigned lights by search
   const filteredAssigned = useMemo(() => {
@@ -339,7 +490,7 @@ export default function RoomDetailPage() {
     return effectiveAssigned.filter(a => a.label.toLowerCase().includes(q))
   }, [effectiveAssigned, lightSearch])
 
-  // Filter available lights by search
+  // Filter available lights by search (returns groups with matching lights)
   const filteredAvailableByGroup = useMemo(() => {
     if (!lightSearch.trim()) return availableByGroup
     const q = lightSearch.toLowerCase()
@@ -351,6 +502,20 @@ export default function RoomDetailPage() {
     return filtered
   }, [availableByGroup, lightSearch])
 
+  // Build search match summary for lights
+  const lightMatchSummary = useMemo(() => {
+    if (!lightSearch.trim()) return ''
+    const parts: string[] = []
+    for (const [group, lights] of filteredAvailableByGroup) {
+      parts.push(`${lights.length} in ${group}`)
+    }
+    const assignedMatches = filteredAssigned.length
+    if (assignedMatches > 0) {
+      parts.unshift(`${assignedMatches} assigned`)
+    }
+    return parts.length > 0 ? parts.join(', ') : 'No matches'
+  }, [lightSearch, filteredAvailableByGroup, filteredAssigned])
+
   // Build a map from light ID to Light object for assigned lights
   const lightById = useMemo(() => {
     if (!allLights) return new Map<string, Light>()
@@ -360,7 +525,6 @@ export default function RoomDetailPage() {
   // ── Device (switches/dimmers/twinkly/fairy) assignment state ──────────
   const SWITCH_TYPES = ['switch', 'dimmer']
   const OTHER_TYPES = ['twinkly', 'fairy']
-  const ALL_DEVICE_TYPES = [...SWITCH_TYPES, ...OTHER_TYPES]
 
   // Devices assigned to THIS room (from API or local pending state)
   const [pendingDeviceAssigns, setPendingDeviceAssigns] = useState<
@@ -408,53 +572,56 @@ export default function RoomDetailPage() {
     return new Set(allDeviceRoomAssignments.map(a => a.device_id))
   }, [allDeviceRoomAssignments])
 
-  // Hub devices available (not assigned to any room), matching relevant types
-  const availableSwitchDevices = useMemo(() => {
-    if (!allHubDevices) return []
+  // Available devices by type for switches tab
+  const availableDevicesByType = useMemo(() => {
+    if (!allHubDevices) return new Map<string, HubDevice[]>()
     const assignedIds = new Set(effectiveDeviceAssignments.map(d => d.device_id))
-    return allHubDevices.filter(
-      d =>
-        SWITCH_TYPES.includes(d.device_type) &&
-        !assignedIds.has(String(d.id)) &&
-        !deviceIdsAssignedToAnyRoom.has(String(d.id)),
-    )
+    const allTypes = [...SWITCH_TYPES, ...OTHER_TYPES]
+    const groups = new Map<string, HubDevice[]>()
+    for (const device of allHubDevices) {
+      if (!allTypes.includes(device.device_type)) continue
+      if (assignedIds.has(String(device.id))) continue
+      if (deviceIdsAssignedToAnyRoom.has(String(device.id))) continue
+      const type = device.device_type
+      if (!groups.has(type)) groups.set(type, [])
+      groups.get(type)!.push(device)
+    }
+    return groups
   }, [allHubDevices, effectiveDeviceAssignments, deviceIdsAssignedToAnyRoom])
 
-  const availableOtherDevices = useMemo(() => {
-    if (!allHubDevices) return []
-    const assignedIds = new Set(effectiveDeviceAssignments.map(d => d.device_id))
-    return allHubDevices.filter(
-      d =>
-        OTHER_TYPES.includes(d.device_type) &&
-        !assignedIds.has(String(d.id)) &&
-        !deviceIdsAssignedToAnyRoom.has(String(d.id)),
-    )
-  }, [allHubDevices, effectiveDeviceAssignments, deviceIdsAssignedToAnyRoom])
-
-  // Filter by device search
-  const filteredAssignedSwitches = useMemo(() => {
-    if (!deviceSearch.trim()) return assignedSwitches
+  // Filter assigned devices by search
+  const filteredAssignedDevices = useMemo(() => {
+    if (!deviceSearch.trim()) return effectiveDeviceAssignments
     const q = deviceSearch.toLowerCase()
-    return assignedSwitches.filter(d => d.device_label.toLowerCase().includes(q))
-  }, [assignedSwitches, deviceSearch])
+    return effectiveDeviceAssignments.filter(d => d.device_label.toLowerCase().includes(q))
+  }, [effectiveDeviceAssignments, deviceSearch])
 
-  const filteredAssignedOther = useMemo(() => {
-    if (!deviceSearch.trim()) return assignedOtherDevices
+  // Filter available devices by search (group-aware)
+  const filteredAvailableDevicesByType = useMemo(() => {
+    if (!deviceSearch.trim()) return availableDevicesByType
     const q = deviceSearch.toLowerCase()
-    return assignedOtherDevices.filter(d => d.device_label.toLowerCase().includes(q))
-  }, [assignedOtherDevices, deviceSearch])
+    const filtered = new Map<string, HubDevice[]>()
+    for (const [type, devices] of availableDevicesByType) {
+      const matching = devices.filter(d => d.label.toLowerCase().includes(q))
+      if (matching.length > 0) filtered.set(type, matching)
+    }
+    return filtered
+  }, [availableDevicesByType, deviceSearch])
 
-  const filteredAvailableSwitches = useMemo(() => {
-    if (!deviceSearch.trim()) return availableSwitchDevices
-    const q = deviceSearch.toLowerCase()
-    return availableSwitchDevices.filter(d => d.label.toLowerCase().includes(q))
-  }, [availableSwitchDevices, deviceSearch])
-
-  const filteredAvailableOther = useMemo(() => {
-    if (!deviceSearch.trim()) return availableOtherDevices
-    const q = deviceSearch.toLowerCase()
-    return availableOtherDevices.filter(d => d.label.toLowerCase().includes(q))
-  }, [availableOtherDevices, deviceSearch])
+  // Device search match summary
+  const deviceMatchSummary = useMemo(() => {
+    if (!deviceSearch.trim()) return ''
+    const parts: string[] = []
+    const assignedMatches = filteredAssignedDevices.length
+    if (assignedMatches > 0) {
+      parts.push(`${assignedMatches} assigned`)
+    }
+    for (const [type, devices] of filteredAvailableDevicesByType) {
+      const label = type.charAt(0).toUpperCase() + type.slice(1)
+      parts.push(`${devices.length} in ${label}`)
+    }
+    return parts.length > 0 ? parts.join(', ') : 'No matches'
+  }, [deviceSearch, filteredAssignedDevices, filteredAvailableDevicesByType])
 
   // Other rooms for parent selector (exclude self)
   const parentRoomOptions = useMemo(() => {
@@ -530,6 +697,40 @@ export default function RoomDetailPage() {
     setDirty(true)
   }
 
+  const handleAssignAllInGroup = (groupLights: Light[]) => {
+    const newAssigned = [...effectiveAssigned]
+    const assignedIds = new Set(newAssigned.map(a => a.id))
+    for (const light of groupLights) {
+      if (!assignedIds.has(light.id) && !assignedToOtherRooms.has(light.id)) {
+        newAssigned.push(toAssignment(light))
+      }
+    }
+    setAssigned(newAssigned)
+    setDirty(true)
+  }
+
+  const handleRemoveAllLights = () => {
+    if (!window.confirm(`Remove all ${effectiveAssigned.length} lights from this room?`)) return
+    setAssigned([])
+    setDirty(true)
+  }
+
+  const handleAssignSelectedLights = () => {
+    if (selectedLightIds.size === 0) return
+    const newAssigned = [...effectiveAssigned]
+    const assignedIds = new Set(newAssigned.map(a => a.id))
+    for (const id of selectedLightIds) {
+      if (!assignedIds.has(id)) {
+        const light = lightById.get(id)
+        if (light) newAssigned.push(toAssignment(light))
+      }
+    }
+    setAssigned(newAssigned)
+    setSelectedLightIds(new Set())
+    setLightMultiSelect(false)
+    setDirty(true)
+  }
+
   const handleAssignDevice = (device: HubDevice) => {
     setPendingDeviceAssigns(prev => [
       ...prev,
@@ -553,6 +754,55 @@ export default function RoomDetailPage() {
     setDirty(true)
   }
 
+  const handleAssignAllDevicesInType = (devices: HubDevice[]) => {
+    const newAssigns = [...pendingDeviceAssigns]
+    const assignedIds = new Set(effectiveDeviceAssignments.map(d => d.device_id))
+    for (const device of devices) {
+      const id = String(device.id)
+      if (!assignedIds.has(id) && !newAssigns.find(p => p.device_id === id)) {
+        newAssigns.push({
+          device_id: id,
+          device_label: device.label,
+          device_type: device.device_type,
+        })
+      }
+    }
+    setPendingDeviceAssigns(newAssigns)
+    setDirty(true)
+  }
+
+  const handleRemoveAllDevices = () => {
+    if (!window.confirm(`Remove all ${effectiveDeviceAssignments.length} devices from this room?`)) return
+    // Unassign API devices
+    for (const d of apiDevicesForRoom) {
+      if (!pendingDeviceUnassigns.includes(d.device_id)) {
+        setPendingDeviceUnassigns(prev => [...prev, d.device_id])
+      }
+    }
+    // Clear pending assigns
+    setPendingDeviceAssigns([])
+    setDirty(true)
+  }
+
+  const handleAssignSelectedDevices = () => {
+    if (selectedDeviceIds.size === 0) return
+    const newAssigns = [...pendingDeviceAssigns]
+    for (const id of selectedDeviceIds) {
+      const device = allHubDevices?.find(d => String(d.id) === id)
+      if (device && !newAssigns.find(p => p.device_id === id)) {
+        newAssigns.push({
+          device_id: id,
+          device_label: device.label,
+          device_type: device.device_type,
+        })
+      }
+    }
+    setPendingDeviceAssigns(newAssigns)
+    setSelectedDeviceIds(new Set())
+    setDeviceMultiSelect(false)
+    setDirty(true)
+  }
+
   const handleAddSensor = () => {
     setSensors([...effectiveSensors, { name: '', priority_threshold: 50 }])
     setDirty(true)
@@ -571,6 +821,24 @@ export default function RoomDetailPage() {
   }
 
   const markDirty = () => setDirty(true)
+
+  const toggleLightSelect = (id: string) => {
+    setSelectedLightIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleDeviceSelect = (id: string) => {
+    setSelectedDeviceIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   if (roomLoading) {
     return (
@@ -594,6 +862,17 @@ export default function RoomDetailPage() {
         </Link>
       </div>
     )
+  }
+
+  const isSearchingLights = lightSearch.trim().length > 0
+  const isSearchingDevices = deviceSearch.trim().length > 0
+
+  // Device type display labels
+  const deviceTypeLabels: Record<string, string> = {
+    switch: 'Switches',
+    dimmer: 'Dimmers',
+    twinkly: 'Twinkly',
+    fairy: 'Fairy',
   }
 
   return (
@@ -729,7 +1008,10 @@ export default function RoomDetailPage() {
               <Lightbulb className="h-4 w-4" />
               Lights
               {effectiveAssigned.length > 0 && (
-                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none',
+                  activeTab === 'lights' ? 'bg-white/20' : 'bg-fairy-500/15 text-fairy-400',
+                )}>
                   {effectiveAssigned.length}
                 </span>
               )}
@@ -746,7 +1028,10 @@ export default function RoomDetailPage() {
               <ToggleLeft className="h-4 w-4" />
               Switches
               {effectiveDeviceAssignments.length > 0 && (
-                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none',
+                  activeTab === 'switches' ? 'bg-white/20' : 'bg-fairy-500/15 text-fairy-400',
+                )}>
                   {effectiveDeviceAssignments.length}
                 </span>
               )}
@@ -762,35 +1047,81 @@ export default function RoomDetailPage() {
             >
               <Activity className="h-4 w-4" />
               Sensors
+              {effectiveSensors.length > 0 && (
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none',
+                  activeTab === 'sensors' ? 'bg-white/20' : 'bg-fairy-500/15 text-fairy-400',
+                )}>
+                  {effectiveSensors.length}
+                </span>
+              )}
             </Tabs.Trigger>
           </Tabs.List>
 
           {/* ── Lights tab ───────────────────────────────────────────────────── */}
-          <Tabs.Content value="lights" className="space-y-6">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" />
-              <input
-                type="search"
-                placeholder="Search lights by name..."
-                value={lightSearch}
-                onChange={e => setLightSearch(e.target.value)}
-                className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface pl-10 pr-3 text-sm text-heading placeholder:text-caption focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-              />
+          <Tabs.Content value="lights" className="space-y-4">
+            {/* Sticky search */}
+            <StickySearch
+              value={lightSearch}
+              onChange={setLightSearch}
+              placeholder="Search lights by name..."
+              matchSummary={lightMatchSummary}
+            />
+
+            {/* Multi-select toolbar */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setLightMultiSelect(prev => !prev)
+                  if (lightMultiSelect) setSelectedLightIds(new Set())
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-3 min-h-[36px] text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                  lightMultiSelect
+                    ? 'bg-fairy-500/15 text-fairy-400'
+                    : 'text-body hover:text-heading hover:surface',
+                )}
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                {lightMultiSelect ? 'Cancel selection' : 'Multi-select'}
+              </button>
+              {lightMultiSelect && selectedLightIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAssignSelectedLights}
+                  className="flex items-center gap-1.5 rounded-lg bg-fairy-500 px-3 min-h-[36px] text-xs font-medium text-white transition-colors hover:bg-fairy-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Assign {selectedLightIds.size} selected
+                </button>
+              )}
             </div>
 
             {/* Assigned lights */}
             <div>
-              <h4 className="mb-3 text-sm font-medium text-body">
-                Assigned
-                {effectiveAssigned.length > 0 && (
-                  <span className="ml-1.5 text-caption">
-                    ({effectiveAssigned.length})
-                  </span>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-sm font-medium text-body">
+                  Assigned to this room
+                  {effectiveAssigned.length > 0 && (
+                    <span className="ml-1.5 text-caption">
+                      ({effectiveAssigned.length})
+                    </span>
+                  )}
+                </h4>
+                {effectiveAssigned.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAllLights}
+                    className="flex items-center gap-1 rounded-lg px-2.5 min-h-[36px] text-[11px] font-medium text-red-400 transition-colors hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Remove all
+                  </button>
                 )}
-              </h4>
+              </div>
               {filteredAssigned.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {filteredAssigned.map(a => (
                     <AssignedLightRow
                       key={a.id}
@@ -805,11 +1136,11 @@ export default function RoomDetailPage() {
                 </div>
               ) : effectiveAssigned.length > 0 && lightSearch.trim() ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No assigned lights match "{lightSearch}".
+                  No assigned lights match &ldquo;{lightSearch}&rdquo;.
                 </p>
               ) : (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No lights assigned to this room yet. Add them from below.
+                  No lights assigned to this room yet. Add them from the groups below.
                 </p>
               )}
             </div>
@@ -818,21 +1149,21 @@ export default function RoomDetailPage() {
             <div>
               <h4 className="mb-3 text-sm font-medium text-body">
                 Available
-                {availableLights.length > 0 && (
-                  <span className="ml-1.5 text-caption">
-                    ({availableLights.length})
-                  </span>
-                )}
               </h4>
               {filteredAvailableByGroup.size > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {Array.from(filteredAvailableByGroup.entries()).map(
                     ([groupName, lights]) => (
-                      <div key={groupName}>
-                        <p className="mb-2 text-xs font-medium text-caption uppercase tracking-wide">
-                          {groupName}
-                        </p>
-                        <div className="space-y-2">
+                      <CollapsibleDeviceGroup
+                        key={groupName}
+                        title={groupName}
+                        count={lights.length}
+                        totalInGroup={allLightsByGroup.get(groupName)?.length ?? lights.length}
+                        defaultOpen={isSearchingLights}
+                        onAssignAll={() => handleAssignAllInGroup(lights)}
+                        fullyAssigned={isGroupFullyAssigned(groupName)}
+                      >
+                        <div className="space-y-1">
                           {lights.map(light => (
                             <AvailableLightRow
                               key={light.id}
@@ -841,20 +1172,23 @@ export default function RoomDetailPage() {
                               onIdentify={() =>
                                 identifyMutation.mutate(`id:${light.id}`)
                               }
+                              multiSelectMode={lightMultiSelect}
+                              selected={selectedLightIds.has(light.id)}
+                              onToggleSelect={() => toggleLightSelect(light.id)}
                             />
                           ))}
                         </div>
-                      </div>
+                      </CollapsibleDeviceGroup>
                     ),
                   )}
                 </div>
-              ) : availableLights.length > 0 && lightSearch.trim() ? (
+              ) : availableByGroup.size > 0 && lightSearch.trim() ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No available lights match "{lightSearch}".
+                  No available lights match &ldquo;{lightSearch}&rdquo;.
                 </p>
-              ) : availableLights.length === 0 && allLights ? (
+              ) : availableByGroup.size === 0 && allLights && allLights.length > 0 ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  All lights have been assigned to rooms.
+                  All available lights have been assigned.
                 </p>
               ) : !allLights ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
@@ -862,35 +1196,95 @@ export default function RoomDetailPage() {
                 </p>
               ) : null}
             </div>
+
+            {/* Lights assigned to other rooms */}
+            {lightsInOtherRooms.length > 0 && !isSearchingLights && (
+              <div>
+                <h4 className="mb-3 text-sm font-medium text-caption">
+                  Assigned to other rooms
+                </h4>
+                <div className="space-y-1">
+                  {lightsInOtherRooms.map(light => (
+                    <AvailableLightRow
+                      key={light.id}
+                      light={light}
+                      onAdd={() => {}}
+                      onIdentify={() =>
+                        identifyMutation.mutate(`id:${light.id}`)
+                      }
+                      assignedToRoom={lightToOtherRoom.get(light.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </Tabs.Content>
 
           {/* ── Switches tab ─────────────────────────────────────────────────── */}
-          <Tabs.Content value="switches" className="space-y-6">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" />
-              <input
-                type="search"
-                placeholder="Search devices by name..."
-                value={deviceSearch}
-                onChange={e => setDeviceSearch(e.target.value)}
-                className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface pl-10 pr-3 text-sm text-heading placeholder:text-caption focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-              />
+          <Tabs.Content value="switches" className="space-y-4">
+            {/* Sticky search */}
+            <StickySearch
+              value={deviceSearch}
+              onChange={setDeviceSearch}
+              placeholder="Search devices by name..."
+              matchSummary={deviceMatchSummary}
+            />
+
+            {/* Multi-select toolbar */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeviceMultiSelect(prev => !prev)
+                  if (deviceMultiSelect) setSelectedDeviceIds(new Set())
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-3 min-h-[36px] text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                  deviceMultiSelect
+                    ? 'bg-fairy-500/15 text-fairy-400'
+                    : 'text-body hover:text-heading hover:surface',
+                )}
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                {deviceMultiSelect ? 'Cancel selection' : 'Multi-select'}
+              </button>
+              {deviceMultiSelect && selectedDeviceIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAssignSelectedDevices}
+                  className="flex items-center gap-1.5 rounded-lg bg-fairy-500 px-3 min-h-[36px] text-xs font-medium text-white transition-colors hover:bg-fairy-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Assign {selectedDeviceIds.size} selected
+                </button>
+              )}
             </div>
 
-            {/* ── Switches & Dimmers section ─────────────────────────────────── */}
+            {/* Assigned devices */}
             <div>
-              <h4 className="mb-3 text-sm font-medium text-body">
-                Assigned Switches
-                {assignedSwitches.length > 0 && (
-                  <span className="ml-1.5 text-caption">
-                    ({assignedSwitches.length})
-                  </span>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-sm font-medium text-body">
+                  Assigned to this room
+                  {effectiveDeviceAssignments.length > 0 && (
+                    <span className="ml-1.5 text-caption">
+                      ({effectiveDeviceAssignments.length})
+                    </span>
+                  )}
+                </h4>
+                {effectiveDeviceAssignments.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAllDevices}
+                    className="flex items-center gap-1 rounded-lg px-2.5 min-h-[36px] text-[11px] font-medium text-red-400 transition-colors hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Remove all
+                  </button>
                 )}
-              </h4>
-              {filteredAssignedSwitches.length > 0 ? (
-                <div className="space-y-2">
-                  {filteredAssignedSwitches.map(d => (
+              </div>
+              {filteredAssignedDevices.length > 0 ? (
+                <div className="space-y-1.5">
+                  {filteredAssignedDevices.map(d => (
                     <AssignedDeviceRow
                       key={d.device_id}
                       assignment={d}
@@ -898,108 +1292,57 @@ export default function RoomDetailPage() {
                     />
                   ))}
                 </div>
-              ) : assignedSwitches.length > 0 && deviceSearch.trim() ? (
+              ) : effectiveDeviceAssignments.length > 0 && deviceSearch.trim() ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No assigned switches match "{deviceSearch}".
+                  No assigned devices match &ldquo;{deviceSearch}&rdquo;.
                 </p>
               ) : (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No switches assigned yet. Add them from the available devices below.
+                  No devices assigned yet. Add them from the groups below.
                 </p>
               )}
             </div>
 
+            {/* Available devices grouped by type */}
             <div>
               <h4 className="mb-3 text-sm font-medium text-body">
-                Available Switches
-                {availableSwitchDevices.length > 0 && (
-                  <span className="ml-1.5 text-caption">
-                    ({availableSwitchDevices.length})
-                  </span>
-                )}
+                Available
               </h4>
-              {filteredAvailableSwitches.length > 0 ? (
+              {filteredAvailableDevicesByType.size > 0 ? (
                 <div className="space-y-2">
-                  {filteredAvailableSwitches.map(d => (
-                    <AvailableDeviceRow
-                      key={d.id}
-                      device={d}
-                      onAdd={() => handleAssignDevice(d)}
-                    />
-                  ))}
+                  {Array.from(filteredAvailableDevicesByType.entries()).map(
+                    ([typeName, devices]) => (
+                      <CollapsibleDeviceGroup
+                        key={typeName}
+                        title={deviceTypeLabels[typeName] ?? typeName}
+                        count={devices.length}
+                        totalInGroup={availableDevicesByType.get(typeName)?.length ?? devices.length}
+                        defaultOpen={isSearchingDevices}
+                        onAssignAll={() => handleAssignAllDevicesInType(devices)}
+                      >
+                        <div className="space-y-1">
+                          {devices.map(device => (
+                            <AvailableDeviceRow
+                              key={device.id}
+                              device={device}
+                              onAdd={() => handleAssignDevice(device)}
+                              multiSelectMode={deviceMultiSelect}
+                              selected={selectedDeviceIds.has(String(device.id))}
+                              onToggleSelect={() => toggleDeviceSelect(String(device.id))}
+                            />
+                          ))}
+                        </div>
+                      </CollapsibleDeviceGroup>
+                    ),
+                  )}
                 </div>
-              ) : availableSwitchDevices.length > 0 && deviceSearch.trim() ? (
+              ) : availableDevicesByType.size > 0 && deviceSearch.trim() ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No available switches match "{deviceSearch}".
+                  No available devices match &ldquo;{deviceSearch}&rdquo;.
                 </p>
-              ) : availableSwitchDevices.length === 0 && allHubDevices ? (
+              ) : availableDevicesByType.size === 0 && allHubDevices ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  All switches and dimmers have been assigned to rooms.
-                </p>
-              ) : !allHubDevices ? (
-                <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No Hubitat devices found. Check your hub connection.
-                </p>
-              ) : null}
-            </div>
-
-            {/* ── Other Devices (Twinkly / Fairy) ────────────────────────────── */}
-            <div className="border-t border-[var(--border-primary)] pt-6">
-              <h4 className="mb-3 text-sm font-medium text-body">
-                Assigned Other Devices
-                {assignedOtherDevices.length > 0 && (
-                  <span className="ml-1.5 text-caption">
-                    ({assignedOtherDevices.length})
-                  </span>
-                )}
-              </h4>
-              {filteredAssignedOther.length > 0 ? (
-                <div className="space-y-2">
-                  {filteredAssignedOther.map(d => (
-                    <AssignedDeviceRow
-                      key={d.device_id}
-                      assignment={d}
-                      onRemove={() => handleUnassignDevice(d.device_id)}
-                    />
-                  ))}
-                </div>
-              ) : assignedOtherDevices.length > 0 && deviceSearch.trim() ? (
-                <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No assigned devices match "{deviceSearch}".
-                </p>
-              ) : (
-                <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No Twinkly or Fairy devices assigned. Add them from below.
-                </p>
-              )}
-            </div>
-
-            <div>
-              <h4 className="mb-3 text-sm font-medium text-body">
-                Available Other Devices
-                {availableOtherDevices.length > 0 && (
-                  <span className="ml-1.5 text-caption">
-                    ({availableOtherDevices.length})
-                  </span>
-                )}
-              </h4>
-              {filteredAvailableOther.length > 0 ? (
-                <div className="space-y-2">
-                  {filteredAvailableOther.map(d => (
-                    <AvailableDeviceRow
-                      key={d.id}
-                      device={d}
-                      onAdd={() => handleAssignDevice(d)}
-                    />
-                  ))}
-                </div>
-              ) : availableOtherDevices.length > 0 && deviceSearch.trim() ? (
-                <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  No available devices match "{deviceSearch}".
-                </p>
-              ) : availableOtherDevices.length === 0 && allHubDevices ? (
-                <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
-                  All Twinkly and Fairy devices have been assigned to rooms.
+                  All devices have been assigned to rooms.
                 </p>
               ) : !allHubDevices ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
