@@ -227,7 +227,14 @@ export class MotionHandler {
       const room = getOne<RoomRow>('SELECT * FROM rooms WHERE name = ?', [
         roomName,
       ])
-      if (!room || !room.auto) return
+      if (!room) {
+        log(`Room "${roomName}" not found in database`)
+        return
+      }
+      if (!room.auto) {
+        log(`Room ${roomName} has automation disabled, skipping`)
+        return
+      }
 
       // Check lux threshold — skip activation if room is very bright
       // Default 500 lux: a well-lit room is ~300-500, direct sunlight 1000+

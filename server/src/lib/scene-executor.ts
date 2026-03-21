@@ -17,7 +17,8 @@ interface LightCommand {
 
 interface SceneCommand {
   type: 'lifx_scene'
-  scene_name: string
+  scene_name?: string
+  name?: string  // legacy format uses 'name' instead of 'scene_name'
   duration?: number
 }
 
@@ -168,15 +169,16 @@ export async function activateScene(sceneName: string): Promise<void> {
     try {
       switch (cmd.type) {
         case 'lifx_scene': {
+          const lifxSceneName = cmd.scene_name || cmd.name || ''
           const scenes = await lifxClient.listScenes()
           const target = scenes.find(
-            (s: { name: string }) => s.name === cmd.scene_name,
+            (s: { name: string }) => s.name === lifxSceneName,
           )
           if (target) {
             await lifxClient.activateScene(target.uuid, cmd.duration ?? 1)
-            log(`Activated LIFX scene: ${cmd.scene_name}`)
+            log(`Activated LIFX scene: ${lifxSceneName}`)
           } else {
-            log(`LIFX scene not found: ${cmd.scene_name}`)
+            log(`LIFX scene not found: ${lifxSceneName}`)
           }
           break
         }
