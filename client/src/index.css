@@ -123,6 +123,8 @@ body {
   padding: 15px 0;
   background-clip: content-box;
   box-sizing: content-box;
+  /* Default track colour if no inline style background is set */
+  background-color: var(--bg-tertiary, #1e293b);
 }
 
 .fairy-slider:focus-visible {

@@ -1223,6 +1223,10 @@ function WeatherIndicatorSection() {
     brightness: 0.5,
   }
 
+  // Local brightness state for smooth slider without toast spam
+  const [localBrightness, setLocalBrightness] = useState<number | null>(null)
+  const displayBrightness = localBrightness ?? Math.round(config.brightness * 100)
+
   const updateConfig = (patch: Partial<WeatherIndicatorConfig>) => {
     saveMutation.mutate({ ...config, ...patch })
   }
@@ -1350,13 +1354,26 @@ function WeatherIndicatorSection() {
               min={5}
               max={100}
               step={5}
-              value={Math.round(config.brightness * 100)}
-              onChange={(e) => updateConfig({ brightness: Number(e.target.value) / 100 })}
+              value={displayBrightness}
+              onChange={(e) => setLocalBrightness(Number(e.target.value))}
+              onPointerUp={() => {
+                if (localBrightness !== null) {
+                  updateConfig({ brightness: localBrightness / 100 })
+                  setLocalBrightness(null)
+                }
+              }}
+              onKeyUp={(e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                  updateConfig({ brightness: displayBrightness / 100 })
+                  setLocalBrightness(null)
+                }
+              }}
               className="fairy-slider flex-1"
+              style={{ background: `linear-gradient(to right, var(--bg-tertiary), #ffd919)` }}
               aria-label="Weather light brightness"
             />
             <span className="w-10 text-right text-sm font-medium text-heading">
-              {Math.round(config.brightness * 100)}%
+              {displayBrightness}%
             </span>
           </div>
         </div>
