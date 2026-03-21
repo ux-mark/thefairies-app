@@ -205,6 +205,14 @@ export interface ConfiguredStop {
   enabled: boolean
 }
 
+export interface MtaIndicatorConfig {
+  enabled: boolean
+  lightId: string
+  lightLabel: string
+  sensorName: string
+  duration: number
+}
+
 export interface CombinedMtaStatus {
   overallStatus: 'green' | 'orange' | 'red' | 'none'
   overallMessage: string
@@ -403,6 +411,12 @@ export const api = {
       }),
     getCombinedMtaStatus: () =>
       fetchApi<CombinedMtaStatus>('/system/mta/combined-status'),
+    getMtaIndicator: () =>
+      fetchApi<MtaIndicatorConfig>('/system/mta/indicator'),
+    saveMtaIndicator: (config: MtaIndicatorConfig) =>
+      fetchApi<MtaIndicatorConfig>('/system/mta/indicator', { method: 'PUT', body: JSON.stringify(config) }),
+    testMtaIndicator: () =>
+      fetchApi<{ status: string; color: string; duration: number }>('/system/mta/indicator/test', { method: 'POST' }),
     getLogs: (limit?: number, category?: string) => {
       const params = new URLSearchParams()
       if (limit) params.set('limit', String(limit))

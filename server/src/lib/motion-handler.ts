@@ -1,5 +1,7 @@
 import { getAll, getOne, run } from '../db/index.js'
 import { activateScene, deactivateScene } from './scene-executor.js'
+import { lifxClient } from './lifx-client.js'
+import { mtaClient } from './mta-client.js'
 
 interface RoomTimer {
   timeout: NodeJS.Timeout
@@ -56,9 +58,19 @@ function getCurrentMode(): string {
   return row?.value ?? 'Evening'
 }
 
+interface MtaIndicatorConfig {
+  enabled: boolean
+  lightId: string
+  lightLabel: string
+  sensorName: string
+  duration: number
+}
+
 export class MotionHandler {
   private roomTimers: Map<string, RoomTimer> = new Map()
   private sensorStates: Map<string, 'active' | 'inactive'> = new Map()
+  private indicatorRevertTimer: NodeJS.Timeout | null = null
+  private indicatorPreviousState: { power: string; color: string; brightness: number } | null = null
 
   // Find which room a sensor belongs to by its label
   // Checks both device_rooms table and rooms.sensors JSON column
@@ -125,6 +137,17 @@ export class MotionHandler {
   ): Promise<void> {
     // Track sensor state
     this.sensorStates.set(sensorName, value)
+
+    // Check if this sensor is the MTA indicator trigger
+    try {
+      const indicatorRow = getOne<{ value: string }>("SELECT value FROM current_state WHERE key = 'pref_mta_indicator'")
+      if (indicatorRow?.value) {
+        const indicator: MtaIndicatorConfig = JSON.parse(indicatorRow.value)
+        if (indicator.enabled && indicator.sensorName === sensorName && value === 'active') {
+          this.triggerMtaIndicator(indicator)
+        }
+      }
+    } catch { /* ignore indicator errors */ }
 
     // Find which room this sensor belongs to
     const deviceRoom = this.findRoomForSensor(sensorName)
@@ -279,6 +302,114 @@ export class MotionHandler {
       [value, deviceRoom.room_name],
     )
     log(`Lux update: ${sensorName} = ${value} in ${deviceRoom.room_name}`)
+  }
+
+  async triggerMtaIndicator(config: MtaIndicatorConfig): Promise<void> {
+    try {
+      // Cancel any existing revert timer
+      if (this.indicatorRevertTimer) {
+        clearTimeout(this.indicatorRevertTimer)
+      }
+
+      const selector = `id:${config.lightId}`
+
+      // Save current light state (so we can revert)
+      const lights = await lifxClient.listBySelector(selector)
+      if (lights.length > 0) {
+        const light = lights[0]
+        this.indicatorPreviousState = {
+          power: light.power,
+          color: `hue:${light.color.hue} saturation:${light.color.saturation} kelvin:${light.color.kelvin}`,
+          brightness: light.brightness,
+        }
+      }
+
+      // Get configured stops
+      const configuredRow = getOne<{ value: string }>("SELECT value FROM current_state WHERE key = 'pref_mta_stops'")
+      let stops: Array<{
+        stopId: string; direction: string; routes: string[];
+        feedGroup: string; walkTime: number; enabled: boolean
+      }> = []
+      try { stops = configuredRow?.value ? JSON.parse(configuredRow.value) : [] } catch { stops = [] }
+
+      const enabledStops = stops.filter(s => s.enabled)
+      if (enabledStops.length === 0) return
+
+      // Get max wait threshold
+      const maxWaitRow = getOne<{ value: string }>("SELECT value FROM current_state WHERE key = 'pref_mta_max_wait'")
+      const maxWaitMinutes = maxWaitRow?.value ? Number(maxWaitRow.value) : 6
+
+      // Get status for each stop, find the best
+      let bestStatus = 'none'
+      const statusPriority: Record<string, number> = { green: 3, orange: 2, red: 1, none: 0 }
+
+      for (const stop of enabledStops) {
+        try {
+          const result = await mtaClient.getStatus(stop.stopId, stop.direction, stop.routes, stop.feedGroup, stop.walkTime, maxWaitMinutes)
+          if (statusPriority[result.status] > statusPriority[bestStatus]) {
+            bestStatus = result.status
+          }
+        } catch { /* skip failed stop */ }
+      }
+
+      // Set light colour based on status
+      const statusColors: Record<string, string> = {
+        green: '#22c55e',
+        orange: '#f97316',
+        red: '#ef4444',
+        none: '#6b7280',
+      }
+
+      const color = statusColors[bestStatus] || statusColors.red
+
+      // Set the light
+      await lifxClient.setState(selector, {
+        power: 'on',
+        color: color,
+        brightness: 1,
+        duration: 0.5,
+      })
+
+      // For orange/red, add a breathe effect for urgency
+      if (bestStatus === 'orange' || bestStatus === 'red') {
+        await lifxClient.breathe(selector, {
+          color: color,
+          period: bestStatus === 'red' ? 1 : 2,
+          cycles: bestStatus === 'red' ? 10 : 5,
+          persist: false,
+          power_on: true,
+        })
+      }
+
+      log(`MTA indicator: ${bestStatus} on light ${config.lightId}`)
+
+      // Schedule revert after duration
+      this.indicatorRevertTimer = setTimeout(async () => {
+        try {
+          if (this.indicatorPreviousState) {
+            if (this.indicatorPreviousState.power === 'off') {
+              await lifxClient.setState(selector, { power: 'off', duration: 1 })
+            } else {
+              await lifxClient.setState(selector, {
+                power: 'on',
+                color: this.indicatorPreviousState.color,
+                brightness: this.indicatorPreviousState.brightness,
+                duration: 1,
+              })
+            }
+            log('MTA indicator reverted to previous state')
+          }
+        } catch (err) {
+          log(`Error reverting MTA indicator: ${err}`)
+        }
+        this.indicatorPreviousState = null
+        this.indicatorRevertTimer = null
+      }, config.duration * 1000)
+
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`MTA indicator error: ${msg}`)
+    }
   }
 
   cancelRoomTimer(roomName: string): void {
