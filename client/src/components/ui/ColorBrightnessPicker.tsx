@@ -1,6 +1,6 @@
-import { useCallback } from 'react'
+import { useCallback, useRef, useEffect, useMemo } from 'react'
 import { HslColorPicker, type HslColor } from 'react-colorful'
-import { cn, kelvinToHex, hsbToHex } from '@/lib/utils'
+import { cn, kelvinToHex, hsbToHex, debounce } from '@/lib/utils'
 
 interface ColorBrightnessPickerProps {
   hasColor: boolean
@@ -23,30 +23,48 @@ export default function ColorBrightnessPicker({
   onChange,
   onLiveChange,
 }: ColorBrightnessPickerProps) {
+  // Debounced live change (300ms) for API calls
+  const debouncedLiveChange = useMemo(() => {
+    if (!onLiveChange) return undefined
+    return debounce(
+      (update: { color?: HslColor; kelvin?: number; brightness?: number }) => {
+        onLiveChange(update)
+      },
+      300,
+    )
+  }, [onLiveChange])
+
+  // Clean up debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedLiveChange?.cancel()
+    }
+  }, [debouncedLiveChange])
+
   const handleColorChange = useCallback(
     (c: HslColor) => {
       onChange({ color: c })
-      onLiveChange?.({ color: c })
+      debouncedLiveChange?.({ color: c })
     },
-    [onChange, onLiveChange],
+    [onChange, debouncedLiveChange],
   )
 
   const handleKelvinChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const k = Number(e.target.value)
       onChange({ kelvin: k })
-      onLiveChange?.({ kelvin: k })
+      debouncedLiveChange?.({ kelvin: k })
     },
-    [onChange, onLiveChange],
+    [onChange, debouncedLiveChange],
   )
 
   const handleBrightnessChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const b = Number(e.target.value)
       onChange({ brightness: b })
-      onLiveChange?.({ brightness: b })
+      debouncedLiveChange?.({ brightness: b })
     },
-    [onChange, onLiveChange],
+    [onChange, debouncedLiveChange],
   )
 
   // Compute preview color
@@ -54,8 +72,14 @@ export default function ColorBrightnessPicker({
     ? hsbToHex(color.h, color.s / 100, brightness / 100)
     : kelvinToHex(kelvin)
 
+  // Brightness gradient: black to current colour
+  const brightnessGradient = `linear-gradient(to right, #0f172a, ${previewHex})`
+
+  // Kelvin gradient: warm amber to cool blue-white
+  const kelvinGradient = `linear-gradient(to right, #ff8a00, ${kelvinToHex(Math.round((minKelvin + maxKelvin) / 2))}, #b4d7ff)`
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Colour preview */}
       <div className="flex items-center gap-3">
         <div
@@ -75,8 +99,30 @@ export default function ColorBrightnessPicker({
 
       {/* Colour picker or kelvin slider */}
       {hasColor ? (
-        <div className="overflow-hidden rounded-xl">
-          <HslColorPicker color={color} onChange={handleColorChange} />
+        <div className="color-picker-fullrange overflow-hidden rounded-xl">
+          <HslColorPicker
+            color={{ h: color.h, s: color.s, l: color.l }}
+            onChange={handleColorChange}
+          />
+          <style>{`
+            .color-picker-fullrange .react-colorful {
+              width: 100% !important;
+              min-width: 240px;
+            }
+            .color-picker-fullrange .react-colorful__hue {
+              border-radius: 8px;
+              height: 24px;
+            }
+            .color-picker-fullrange .react-colorful__saturation {
+              border-radius: 12px 12px 0 0;
+              min-height: 200px;
+            }
+            .color-picker-fullrange .react-colorful__pointer {
+              width: 24px;
+              height: 24px;
+              border-width: 3px;
+            }
+          `}</style>
         </div>
       ) : (
         <div className="space-y-2">
@@ -91,10 +137,10 @@ export default function ColorBrightnessPicker({
               step={100}
               value={kelvin}
               onChange={handleKelvinChange}
-              className="relative z-10 h-11 w-full cursor-pointer appearance-none rounded-lg bg-transparent"
-              style={{
-                background: `linear-gradient(to right, ${kelvinToHex(minKelvin)}, ${kelvinToHex(Math.round((minKelvin + maxKelvin) / 2))}, ${kelvinToHex(maxKelvin)})`,
-              }}
+              className={cn(
+                'slider-touch relative z-10 h-11 w-full cursor-pointer appearance-none rounded-lg bg-transparent',
+              )}
+              style={{ background: kelvinGradient }}
               aria-label="Colour temperature"
             />
             <div className="mt-1 flex justify-between text-[10px] text-slate-500">
@@ -120,15 +166,45 @@ export default function ColorBrightnessPicker({
             value={brightness}
             onChange={handleBrightnessChange}
             className={cn(
-              'h-11 w-full cursor-pointer appearance-none rounded-lg',
+              'slider-touch h-11 w-full cursor-pointer appearance-none rounded-lg',
             )}
-            style={{
-              background: `linear-gradient(to right, #0f172a, ${previewHex})`,
-            }}
+            style={{ background: brightnessGradient }}
             aria-label="Brightness"
           />
         </div>
       </div>
+
+      {/* Touch-friendly slider styles */}
+      <style>{`
+        .slider-touch::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: white;
+          border: 2px solid rgba(148, 163, 184, 0.5);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+          cursor: pointer;
+        }
+        .slider-touch::-moz-range-thumb {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: white;
+          border: 2px solid rgba(148, 163, 184, 0.5);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+          cursor: pointer;
+        }
+        .slider-touch::-webkit-slider-runnable-track {
+          height: 8px;
+          border-radius: 4px;
+        }
+        .slider-touch::-moz-range-track {
+          height: 8px;
+          border-radius: 4px;
+        }
+      `}</style>
     </div>
   )
 }

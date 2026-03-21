@@ -1,18 +1,19 @@
 ---
-name: The Fairies - Home Automation System Overview
-description: Core architecture and tech stack of The Fairies home automation system - Node.js/Express backend, LitElement frontend, MongoDB, integrates Hubitat/LIFX/Sonos/Twinkly/Spotify
+name: The Fairies v3 - Greenfield Home Automation App
+description: New greenfield build of The Fairies home automation system - React/Vite/TypeScript frontend, Express/TypeScript/SQLite backend
 type: project
 ---
 
-**The Fairies 2.0** is a home automation system running on a local network (192.168.x.x).
+**The Fairies v3** is a greenfield rebuild of the home automation system.
 
-- **Backend**: Node.js + Express (port 3001), MongoDB (local + cloud), Sentry error tracking
-- **Frontend**: LitElement web components, multi-page (not SPA), served on port 80
-- **Integrations**: Hubitat Elevation (primary hub), LIFX lights, Sonos speakers, Spotify (via Sonos), Twinkly decorative lights, OpenWeather, Telegram (incomplete)
-- **Core concept**: Scene-based automation — scenes contain commands for multiple device types, filtered by room and mode (time of day)
-- **Automation triggers**: Motion sensors, lux levels, temperature, sun position (SunCalc), timers
-- **No user auth** — relies on local network trust and CORS origin whitelisting
+- **Repo**: https://github.com/ux-mark/thefairies-app (separate from old repo ux-mark/thefairies)
+- **Monorepo**: client/ (React) + server/ (Express)
+- **Frontend**: React + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui (Radix) + react-colorful + TanStack Query + PWA
+- **Backend**: Express 5 + TypeScript + SQLite (better-sqlite3) + Socket.io + Zod
+- **Key feature**: Per-light colour/brightness control in scene editor, light-to-room assignment, touch-friendly colour pickers
+- **Design**: Mobile-first dark theme (slate-950 + emerald/fairy-500 accent), Apple Watch view at /watch
+- **Pages**: Home dashboard, Rooms, Room detail (light assignment), Scenes, Scene editor, Lights overview, Watch view
 
-**Why:** User is planning a greenfield rebuild to improve UX, make it mobile-first with iWatch support, and modernise the architecture.
+**Why:** Replaces the old LitElement + Express + MongoDB system with modern stack for better UX and maintainability.
 
-**How to apply:** All future work should reference this as the baseline system being rebuilt. Preserve all existing functionality while improving the experience.
+**How to apply:** This is the active project. Old repo (thefairies) is reference only.

@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Sun, Clock, Sparkles, Zap } from 'lucide-react'
+import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind } from 'lucide-react'
 import { api } from '@/lib/api'
-import { cn, formatTimeAgo, MODES } from '@/lib/utils'
+import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import type { Room, Scene } from '@/lib/api'
+import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
 
 // ── Skeleton loader ──────────────────────────────────────────────────────────
 
@@ -26,10 +27,12 @@ function RoomCardSkeleton() {
 
 function ModeSelector({
   currentMode,
+  modes,
   onSelect,
   isPending,
 }: {
   currentMode: string
+  modes: string[]
   onSelect: (mode: string) => void
   isPending: boolean
 }) {
@@ -37,7 +40,7 @@ function ModeSelector({
     <section aria-label="System mode" className="mb-6">
       <h2 className="mb-3 text-sm font-medium text-slate-400">Current Mode</h2>
       <div className="flex flex-wrap gap-2">
-        {MODES.map(mode => (
+        {modes.map(mode => (
           <button
             key={mode}
             onClick={() => onSelect(mode)}
@@ -116,7 +119,7 @@ function RoomCard({
           {room.temperature !== null && (
             <span className="flex items-center gap-1">
               <Thermometer className="h-3.5 w-3.5" />
-              {room.temperature}\u00B0C
+              {room.temperature !== null && Math.round(room.temperature * 10) / 10}°C
             </span>
           )}
           {room.lux !== null && (
@@ -155,6 +158,64 @@ function RoomCard({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Weather card ────────────────────────────────────────────────────────────
+
+function WeatherCard() {
+  const { data: weather } = useQuery({
+    queryKey: ['system', 'weather'],
+    queryFn: api.system.getWeather,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const { data: prefs } = useQuery({
+    queryKey: ['system', 'preferences'],
+    queryFn: api.system.getPreferences,
+  })
+
+  if (!weather) return null
+
+  const useFahrenheit = prefs?.temp_unit === 'F'
+  const displayTemp = useFahrenheit
+    ? Math.round(weather.temp * 9 / 5 + 32)
+    : Math.round(weather.temp)
+  const unit = useFahrenheit ? 'F' : 'C'
+
+  return (
+    <div className="mb-6 flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
+      {weather.icon ? (
+        <img
+          src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`}
+          alt={weather.description}
+          className="h-12 w-12"
+        />
+      ) : (
+        <Cloud className="h-8 w-8 text-slate-400" />
+      )}
+      <div className="flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-semibold text-slate-100">
+            {displayTemp}°{unit}
+          </span>
+          <span className="text-sm capitalize text-slate-400">
+            {weather.description}
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1">
+            <Droplets className="h-3 w-3" />
+            {weather.humidity}%
+          </span>
+          <span className="flex items-center gap-1">
+            <Wind className="h-3 w-3" />
+            {Math.round(weather.wind_speed)} m/s
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -200,12 +261,18 @@ export default function HomePage() {
       toast({ message: 'Failed to activate scene', type: 'error' }),
   })
 
-  const currentMode = system?.mode ?? 'Day'
+  const currentMode = system?.mode ?? 'Evening'
+  const allModes = system?.all_modes ?? [...DEFAULT_MODES]
 
   return (
     <div>
+      <DeviceOnboarding />
+
+      <WeatherCard />
+
       <ModeSelector
         currentMode={currentMode}
+        modes={allModes}
         onSelect={mode => setModeMutation.mutate(mode)}
         isPending={setModeMutation.isPending}
       />

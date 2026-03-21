@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Power } from 'lucide-react'
 import { api } from '@/lib/api'
-import { cn, MODES } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import type { Room, Scene } from '@/lib/api'
 
 // ── Room scene list ──────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ export default function WatchPage() {
     },
   })
 
-  const currentMode = system?.mode ?? 'Day'
+  const currentMode = system?.mode ?? 'Evening'
   const currentRoom = rooms?.find(r => r.name === selectedRoom)
 
   // Show room detail view

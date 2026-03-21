@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
-import { lifxClient } from '../lib/lifx-client.js'
+import { lifxClient, getRateLimitStatus } from '../lib/lifx-client.js'
 
 const router = Router()
 
@@ -10,6 +10,33 @@ const stateSchema = z.object({
   brightness: z.number().min(0).max(1).optional(),
   duration: z.number().optional(),
 })
+
+const batchStateItemSchema = z.object({
+  selector: z.string(),
+  power: z.enum(['on', 'off']).optional(),
+  color: z.string().optional(),
+  brightness: z.number().min(0).max(1).optional(),
+  duration: z.number().optional(),
+})
+
+const batchStatesSchema = z.object({
+  states: z.array(batchStateItemSchema).min(1).max(50),
+  defaults: z.record(z.unknown()).optional(),
+})
+
+const effectParamsSchema = z.object({
+  color: z.string().optional(),
+  from_color: z.string().optional(),
+  period: z.number().optional(),
+  cycles: z.number().optional(),
+  persist: z.boolean().optional(),
+  power_on: z.boolean().optional(),
+  peak: z.number().optional(),
+  direction: z.string().optional(),
+  speed: z.number().optional(),
+})
+
+const validEffects = ['breathe', 'pulse', 'move'] as const
 
 // GET /lights — list all LIFX lights
 router.get('/lights', async (_req: Request, res: Response) => {
@@ -29,6 +56,27 @@ router.get('/lights', async (_req: Request, res: Response) => {
     }))
     res.json(cleaned)
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// GET /rate-limit — return current rate limit status
+router.get('/rate-limit', (_req: Request, res: Response) => {
+  res.json(getRateLimitStatus())
+})
+
+// PUT /lights/states — batch set states (up to 50 lights)
+router.put('/lights/states', async (req: Request, res: Response) => {
+  try {
+    const body = batchStatesSchema.parse(req.body)
+    const data = await lifxClient.setStates(body.states, body.defaults)
+    res.json(data)
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: err.errors })
+      return
+    }
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })
   }
@@ -82,6 +130,53 @@ router.post('/lights/:selector/identify', async (req: Request, res: Response) =>
     const data = await lifxClient.identify(selector)
     res.json(data)
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /lights/:selector/effects/off — stop effects
+router.post('/lights/:selector/effects/off', async (req: Request, res: Response) => {
+  try {
+    const selector = req.params.selector as string
+    const data = await lifxClient.effectsOff(selector)
+    res.json(data)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /lights/:selector/effects/:effect — run an effect (breathe, pulse, move)
+router.post('/lights/:selector/effects/:effect', async (req: Request, res: Response) => {
+  try {
+    const selector = req.params.selector as string
+    const effect = req.params.effect as string
+
+    if (!validEffects.includes(effect as (typeof validEffects)[number])) {
+      res.status(400).json({ error: `Invalid effect: ${effect}. Must be one of: ${validEffects.join(', ')}` })
+      return
+    }
+
+    const params = effectParamsSchema.parse(req.body)
+    let data: unknown
+    switch (effect) {
+      case 'breathe':
+        data = await lifxClient.breathe(selector, params)
+        break
+      case 'pulse':
+        data = await lifxClient.pulse(selector, params)
+        break
+      case 'move':
+        data = await lifxClient.move(selector, params)
+        break
+    }
+    res.json(data)
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: err.errors })
+      return
+    }
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })
   }

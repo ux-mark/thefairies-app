@@ -65,6 +65,33 @@ export interface SceneRoom {
   priority: number
 }
 
+export type LightEffect = 'breathe' | 'pulse' | 'move'
+
+export interface EffectParams {
+  color?: string
+  from_color?: string
+  period?: number
+  cycles?: number
+  persist?: boolean
+  power_on?: boolean
+  peak?: number
+  direction?: string
+  speed?: number
+}
+
+export interface RateLimitStatus {
+  remaining: number | null
+  resetAt: number | null
+}
+
+export interface BatchState {
+  selector: string
+  power?: 'on' | 'off'
+  color?: string
+  brightness?: number
+  duration?: number
+}
+
 export interface SceneCommand {
   type:
     | 'lifx_scene'
@@ -74,6 +101,10 @@ export interface SceneCommand {
     | 'all_off'
     | 'scene_timer'
     | 'mode_update'
+    | 'lifx_effect'
+    | 'twinkly'
+    | 'fairy_device'
+    | 'fairy_scene'
   name: string
   light_id?: string
   selector?: string
@@ -83,6 +114,8 @@ export interface SceneCommand {
   duration?: number
   command?: string
   id?: string
+  effect?: LightEffect
+  effect_params?: EffectParams
 }
 
 export interface LightRoom {
@@ -149,6 +182,22 @@ export const api = {
         { method: 'POST' },
       ),
     getScenes: () => fetchApi<LifxScene[]>('/lifx/scenes'),
+    setStates: (states: BatchState[], defaults?: object) =>
+      fetchApi<unknown>('/lifx/lights/states', {
+        method: 'PUT',
+        body: JSON.stringify({ states, defaults }),
+      }),
+    runEffect: (selector: string, effect: LightEffect, params: EffectParams) =>
+      fetchApi<unknown>(
+        '/lifx/lights/' + encodeURIComponent(selector) + '/effects/' + effect,
+        { method: 'POST', body: JSON.stringify(params) },
+      ),
+    stopEffects: (selector: string) =>
+      fetchApi<unknown>(
+        '/lifx/lights/' + encodeURIComponent(selector) + '/effects/off',
+        { method: 'POST' },
+      ),
+    getRateLimit: () => fetchApi<RateLimitStatus>('/lifx/rate-limit'),
   },
   rooms: {
     getAll: () => fetchApi<Room[]>('/rooms'),
@@ -210,12 +259,76 @@ export const api = {
       }),
   },
   system: {
-    getCurrent: () => fetchApi<{ mode: string }>('/system/current'),
+    getCurrent: () => fetchApi<{ mode: string; all_modes?: string[] }>('/system/current'),
+    getPreferences: () => fetchApi<Record<string, string>>('/system/preferences'),
+    setPreference: (key: string, value: string) =>
+      fetchApi<unknown>('/system/preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ key, value }),
+      }),
     setMode: (mode: string) =>
       fetchApi<unknown>('/system/mode', {
         method: 'PUT',
         body: JSON.stringify({ mode }),
       }),
-    health: () => fetchApi<unknown>('/system/health'),
+    health: () =>
+      fetchApi<{ status: string; uptime: number; db: string; timestamp: string }>(
+        '/system/health',
+      ),
+    getWeather: () =>
+      fetchApi<{
+        temp: number
+        description: string
+        icon: string
+        humidity: number
+        wind_speed: number
+      }>('/system/weather'),
+    getSunTimes: () => fetchApi<Record<string, string>>('/system/sun'),
+    getModes: () => fetchApi<string[]>('/system/modes'),
+    addMode: (mode: string) =>
+      fetchApi<string[]>('/system/modes', {
+        method: 'POST',
+        body: JSON.stringify({ mode }),
+      }),
+    deleteMode: (mode: string) =>
+      fetchApi<string[]>('/system/modes/' + encodeURIComponent(mode), {
+        method: 'DELETE',
+      }),
+    getTimers: () =>
+      fetchApi<
+        {
+          id: string
+          sceneName: string
+          targetScene: string
+          durationMs: number
+          startedAt: number
+        }[]
+      >('/system/timers'),
+    cancelTimer: (id: string) =>
+      fetchApi<unknown>('/system/timers/cancel/' + encodeURIComponent(id), {
+        method: 'POST',
+      }),
+    cancelAllTimers: () =>
+      fetchApi<unknown>('/system/timers/cancel-all', { method: 'POST' }),
+    getLogs: (limit?: number, category?: string) => {
+      const params = new URLSearchParams()
+      if (limit) params.set('limit', String(limit))
+      if (category) params.set('category', category)
+      const qs = params.toString()
+      return fetchApi<
+        {
+          id: number
+          parent_id: number | null
+          seq: number
+          message: string
+          debug: string | null
+          category: string | null
+          created_at: string
+        }[]
+      >('/system/logs' + (qs ? '?' + qs : ''))
+    },
+  },
+  hubitat: {
+    syncDevices: () => fetchApi<unknown>('/hubitat/devices/sync'),
   },
 }

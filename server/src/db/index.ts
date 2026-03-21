@@ -72,6 +72,30 @@ export function initDb(): void {
       category TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS hub_devices (
+      id INTEGER PRIMARY KEY,
+      label TEXT NOT NULL,
+      device_name TEXT,
+      device_type TEXT DEFAULT 'switch',
+      capabilities TEXT DEFAULT '[]',
+      attributes TEXT DEFAULT '{}',
+      room_name TEXT,
+      last_event TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS device_rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      device_label TEXT NOT NULL,
+      device_type TEXT NOT NULL CHECK(device_type IN ('light','switch','sensor','dimmer','contact','motion')),
+      room_name TEXT NOT NULL REFERENCES rooms(name),
+      config TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(device_id, room_name)
+    );
   `)
 }
 

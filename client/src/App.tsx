@@ -10,6 +10,8 @@ const ScenesPage = React.lazy(() => import('@/pages/ScenesPage'))
 const SceneEditorPage = React.lazy(() => import('@/pages/SceneEditorPage'))
 const LightsPage = React.lazy(() => import('@/pages/LightsPage'))
 const WatchPage = React.lazy(() => import('@/pages/WatchPage'))
+const SettingsPage = React.lazy(() => import('@/pages/SettingsPage'))
+const LogsPage = React.lazy(() => import('@/pages/LogsPage'))
 
 function PageLoader() {
   return (
@@ -33,6 +35,8 @@ export default function App() {
           <Route path="/scenes" element={<ScenesPage />} />
           <Route path="/scenes/:name" element={<SceneEditorPage />} />
           <Route path="/lights" element={<LightsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/logs" element={<LogsPage />} />
         </Route>
         <Route element={<WatchLayout />}>
           <Route path="/watch" element={<WatchPage />} />

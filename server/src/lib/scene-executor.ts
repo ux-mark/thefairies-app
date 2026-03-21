@@ -1,4 +1,5 @@
-import { lifxClient } from './lifx-client.js'
+import { lifxClient, BatchState } from './lifx-client.js'
+import { hubitatClient } from './hubitat-client.js'
 import { getAll, getOne, run } from '../db/index.js'
 
 interface LightCommand {
@@ -28,7 +29,14 @@ interface LightOffCommand {
   duration?: number
 }
 
-type Command = LightCommand | SceneCommand | AllOffCommand | LightOffCommand
+interface HubitatDeviceCommand {
+  type: 'hubitat_device'
+  device_id: number | string
+  command: string
+  value?: string | number
+}
+
+type Command = LightCommand | SceneCommand | AllOffCommand | LightOffCommand | HubitatDeviceCommand
 
 interface SceneRow {
   name: string
@@ -69,7 +77,39 @@ export async function activateScene(sceneName: string): Promise<void> {
 
   log(`Activating scene: ${sceneName}`)
 
+  // Collect lifx_light commands for batching
+  const lightCommands: LightCommand[] = []
+  const otherCommands: Command[] = []
+
   for (const cmd of commands) {
+    if (cmd.type === 'lifx_light') {
+      lightCommands.push(cmd)
+    } else {
+      otherCommands.push(cmd)
+    }
+  }
+
+  // Batch all lifx_light commands into a single setStates call
+  if (lightCommands.length > 0) {
+    try {
+      const states: BatchState[] = lightCommands.map((cmd) => {
+        const state: BatchState = { selector: cmd.selector }
+        if (cmd.power !== undefined) state.power = cmd.power
+        if (cmd.color !== undefined) state.color = cmd.color
+        if (cmd.brightness !== undefined) state.brightness = cmd.brightness
+        if (cmd.duration !== undefined) state.duration = cmd.duration
+        return state
+      })
+      await lifxClient.setStates(states)
+      log(`Batch set ${states.length} light(s) via setStates`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`Error in batch setStates: ${msg}`)
+    }
+  }
+
+  // Execute remaining commands sequentially
+  for (const cmd of otherCommands) {
     try {
       switch (cmd.type) {
         case 'lifx_scene': {
@@ -86,23 +126,26 @@ export async function activateScene(sceneName: string): Promise<void> {
           break
         }
 
-        case 'lifx_light': {
-          const state: Record<string, unknown> = {}
-          if (cmd.power !== undefined) state.power = cmd.power
-          if (cmd.color !== undefined) state.color = cmd.color
-          if (cmd.brightness !== undefined) state.brightness = cmd.brightness
-          if (cmd.duration !== undefined) state.duration = cmd.duration
-          await lifxClient.setState(cmd.selector, state)
-          log(`Set light ${cmd.selector} state`)
-          break
-        }
-
         case 'all_off': {
           await lifxClient.setState('all', {
             power: 'off',
             duration: cmd.duration ?? 1,
           })
-          log('Turned off all lights')
+          // Also turn off Hubitat switches assigned to rooms in this scene
+          for (const room of rooms) {
+            const hubDevices = getAll<{ device_id: string }>(
+              "SELECT device_id FROM device_rooms WHERE room_name = ? AND device_type IN ('switch', 'dimmer', 'light')",
+              [room.name],
+            )
+            for (const dev of hubDevices) {
+              try {
+                await hubitatClient.sendCommand(dev.device_id, 'off')
+              } catch {
+                // best effort
+              }
+            }
+          }
+          log('Turned off all lights and Hubitat switches')
           break
         }
 
@@ -112,6 +155,16 @@ export async function activateScene(sceneName: string): Promise<void> {
             duration: cmd.duration ?? 1,
           })
           log(`Turned off light: ${cmd.selector}`)
+          break
+        }
+
+        case 'hubitat_device': {
+          if (cmd.value !== undefined) {
+            await hubitatClient.sendCommandWithValue(cmd.device_id, cmd.command, cmd.value)
+          } else {
+            await hubitatClient.sendCommand(cmd.device_id, cmd.command)
+          }
+          log(`Hubitat device ${cmd.device_id}: ${cmd.command}${cmd.value !== undefined ? ` ${cmd.value}` : ''}`)
           break
         }
       }
@@ -144,37 +197,71 @@ export async function deactivateScene(sceneName: string): Promise<void> {
 
   log(`Deactivating scene: ${sceneName}`)
 
-  // Turn off all lights referenced in the scene's commands
-  for (const cmd of commands) {
+  // Batch turn off all lifx_light commands
+  const lightCommands = commands.filter(
+    (cmd): cmd is LightCommand => cmd.type === 'lifx_light',
+  )
+
+  if (lightCommands.length > 0) {
     try {
-      if (cmd.type === 'lifx_light') {
-        await lifxClient.setState(cmd.selector, {
-          power: 'off',
-          duration: 1,
-        })
-      }
+      const states: BatchState[] = lightCommands.map((cmd) => ({
+        selector: cmd.selector,
+        power: 'off',
+        duration: 1,
+      }))
+      await lifxClient.setStates(states)
+      log(`Batch turned off ${states.length} light(s)`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      log(`Error deactivating light: ${msg}`)
+      log(`Error in batch deactivate: ${msg}`)
     }
   }
 
-  // Also turn off lights assigned to rooms in this scene
+  // Turn off Hubitat devices referenced in scene commands
+  const hubitatCommands = commands.filter(
+    (cmd): cmd is HubitatDeviceCommand => cmd.type === 'hubitat_device',
+  )
+  for (const cmd of hubitatCommands) {
+    try {
+      await hubitatClient.sendCommand(cmd.device_id, 'off')
+      log(`Turned off Hubitat device ${cmd.device_id}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`Error turning off Hubitat device: ${msg}`)
+    }
+  }
+
+  // Also turn off lights assigned to rooms in this scene (batched)
+  const roomLightStates: BatchState[] = []
   for (const room of rooms) {
     const lights = getAll<{ light_selector: string }>(
       'SELECT light_selector FROM light_rooms WHERE room_name = ?',
       [room.name],
     )
     for (const light of lights) {
-      try {
-        await lifxClient.setState(light.light_selector, {
-          power: 'off',
-          duration: 1,
-        })
-      } catch {
-        // best effort
-      }
+      roomLightStates.push({
+        selector: light.light_selector,
+        power: 'off',
+        duration: 1,
+      })
     }
+  }
+
+  if (roomLightStates.length > 0) {
+    try {
+      // setStates supports up to 50 per call, batch if needed
+      for (let i = 0; i < roomLightStates.length; i += 50) {
+        const batch = roomLightStates.slice(i, i + 50)
+        await lifxClient.setStates(batch)
+      }
+      log(`Batch turned off ${roomLightStates.length} room light(s)`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`Error turning off room lights: ${msg}`)
+    }
+  }
+
+  for (const room of rooms) {
     run(
       `UPDATE rooms SET current_scene = NULL, updated_at = datetime('now') WHERE name = ?`,
       [room.name],

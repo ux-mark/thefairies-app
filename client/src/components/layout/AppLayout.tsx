@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Home, DoorOpen, Sparkles, Lightbulb } from 'lucide-react'
+import { Home, DoorOpen, Sparkles, Lightbulb, Settings } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import ToastContainer from '@/components/ui/Toast'
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/rooms', icon: DoorOpen, label: 'Rooms' },
   { to: '/scenes', icon: Sparkles, label: 'Scenes' },
   { to: '/lights', icon: Lightbulb, label: 'Lights' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ] as const
 
 export default function AppLayout() {

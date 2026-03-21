@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,6 +11,9 @@ import {
   Power,
   Trash2,
   Lightbulb,
+  Search,
+  Copy,
+  AlertTriangle,
 } from 'lucide-react'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Switch from '@radix-ui/react-switch'
@@ -23,7 +26,7 @@ import type {
   LightRoom,
   Light,
 } from '@/lib/api'
-import { cn, hsbToHex, kelvinToHex, MODES } from '@/lib/utils'
+import { cn, hsbToHex, kelvinToHex, debounce, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import ColorBrightnessPicker from '@/components/ui/ColorBrightnessPicker'
 import SceneCommandCard from '@/components/ui/SceneCommandCard'
@@ -60,27 +63,44 @@ function LightEditorCard({
   const [expanded, setExpanded] = useState(false)
   const isOn = state.power === 'on'
 
-  // Preview colour
+  // Preview colour — 40px circle
   const previewHex = state.hasColor
     ? hsbToHex(state.hue, state.saturation / 100, state.brightness / 100)
     : kelvinToHex(state.kelvin)
 
+  // Debounced live change for API calls
+  const debouncedApiCall = useMemo(() => {
+    return debounce(
+      (update: { color?: { h: number; s: number; l: number }; kelvin?: number; brightness?: number }) => {
+        if (!livePreview) return
+        const lifxColor = update.color
+          ? `hue:${update.color.h} saturation:${(update.color.s / 100).toFixed(2)}`
+          : update.kelvin
+            ? `kelvin:${update.kelvin}`
+            : undefined
+        const lifxBrightness = update.brightness !== undefined ? update.brightness / 100 : undefined
+        api.lifx.setState(state.selector, {
+          color: lifxColor,
+          brightness: lifxBrightness,
+          duration: 0.3,
+        })
+      },
+      300,
+    )
+  }, [livePreview, state.selector])
+
+  useEffect(() => {
+    return () => {
+      debouncedApiCall.cancel()
+    }
+  }, [debouncedApiCall])
+
   const handleLiveChange = useCallback(
     (update: { color?: { h: number; s: number; l: number }; kelvin?: number; brightness?: number }) => {
       if (!livePreview) return
-      const lifxColor = update.color
-        ? `hue:${update.color.h} saturation:${(update.color.s / 100).toFixed(2)}`
-        : update.kelvin
-          ? `kelvin:${update.kelvin}`
-          : undefined
-      const lifxBrightness = update.brightness !== undefined ? update.brightness / 100 : undefined
-      api.lifx.setState(state.selector, {
-        color: lifxColor,
-        brightness: lifxBrightness,
-        duration: 0.3,
-      })
+      debouncedApiCall(update)
     },
-    [livePreview, state.selector],
+    [livePreview, debouncedApiCall],
   )
 
   return (
@@ -90,15 +110,15 @@ function LightEditorCard({
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-3 p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-fairy-500"
       >
-        {/* Colour swatch */}
+        {/* Large colour preview circle (40px) */}
         <div
           className={cn(
-            'h-8 w-8 shrink-0 rounded-full border-2 border-slate-700',
+            'h-10 w-10 shrink-0 rounded-full border-2 border-slate-700',
             !isOn && 'opacity-30',
           )}
           style={{
             backgroundColor: isOn ? previewHex : '#475569',
-            opacity: isOn ? state.brightness / 100 || 0.05 : 0.3,
+            opacity: isOn ? Math.max(state.brightness / 100, 0.05) : 0.3,
           }}
           aria-hidden="true"
         />
@@ -125,7 +145,7 @@ function LightEditorCard({
             }
           }}
           className={cn(
-            'rounded-lg p-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+            'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
             isOn
               ? 'bg-fairy-500/15 text-fairy-400'
               : 'text-slate-500 hover:bg-slate-800',
@@ -139,36 +159,44 @@ function LightEditorCard({
       {/* Expanded colour/brightness controls */}
       {expanded && isOn && (
         <div className="border-t border-slate-800 p-4">
-          {/* Live preview toggle */}
-          <div className="mb-4 flex items-center justify-between">
-            <label
-              htmlFor={`live-${state.lightId}`}
-              className="flex items-center gap-2 text-xs font-medium text-slate-400"
-            >
-              {livePreview ? (
-                <Eye className="h-3.5 w-3.5 text-fairy-400" />
-              ) : (
-                <EyeOff className="h-3.5 w-3.5" />
-              )}
-              Live Preview
-            </label>
-            <Switch.Root
-              id={`live-${state.lightId}`}
-              checked={livePreview}
-              onCheckedChange={onLivePreviewToggle}
-              className={cn(
-                'relative h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                livePreview ? 'bg-fairy-500' : 'bg-slate-700',
-              )}
-            >
-              <Switch.Thumb
-                className={cn(
-                  'block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                  livePreview ? 'translate-x-5' : 'translate-x-1',
+          {/* Live preview toggle with warning */}
+          <div className="mb-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor={`live-${state.lightId}`}
+                className="flex items-center gap-2 text-xs font-medium text-slate-400"
+              >
+                {livePreview ? (
+                  <Eye className="h-3.5 w-3.5 text-fairy-400" />
+                ) : (
+                  <EyeOff className="h-3.5 w-3.5" />
                 )}
-              />
-            </Switch.Root>
+                Live Preview
+              </label>
+              <Switch.Root
+                id={`live-${state.lightId}`}
+                checked={livePreview}
+                onCheckedChange={onLivePreviewToggle}
+                className={cn(
+                  'relative h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                  livePreview ? 'bg-fairy-500' : 'bg-slate-700',
+                )}
+              >
+                <Switch.Thumb
+                  className={cn(
+                    'block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                    livePreview ? 'translate-x-5' : 'translate-x-1',
+                  )}
+                />
+              </Switch.Root>
+            </div>
+            {livePreview && (
+              <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Changes will be applied to the physical light
+              </p>
+            )}
           </div>
 
           <ColorBrightnessPicker
@@ -228,6 +256,13 @@ export default function SceneEditorPage() {
     queryFn: api.lifx.getLights,
   })
 
+  const { data: systemCurrent } = useQuery({
+    queryKey: ['system', 'current'],
+    queryFn: api.system.getCurrent,
+  })
+
+  const availableModes = systemCurrent?.all_modes ?? [...DEFAULT_MODES]
+
   // ── Form state ───────────────────────────────────────────────────────────
 
   const [sceneName, setSceneName] = useState('')
@@ -244,6 +279,7 @@ export default function SceneEditorPage() {
     new Set(),
   )
   const [initialized, setInitialized] = useState(false)
+  const [lightSearch, setLightSearch] = useState('')
 
   // Initialize state from scene data
   useEffect(() => {
@@ -499,6 +535,18 @@ export default function SceneEditorPage() {
     })
   }
 
+  // Filter lights within a room by search
+  const filterRoomLights = useCallback(
+    (roomLights: LightRoom[]) => {
+      if (!lightSearch.trim()) return roomLights
+      const q = lightSearch.toLowerCase()
+      return roomLights.filter(rl =>
+        rl.light_label.toLowerCase().includes(q),
+      )
+    },
+    [lightSearch],
+  )
+
   // ── Loading / Not found ──────────────────────────────────────────────────
 
   if (sceneLoading) {
@@ -611,60 +659,87 @@ export default function SceneEditorPage() {
               </p>
             </div>
           ) : (
-            sceneRooms.map(sceneRoom => {
-              const roomLights = roomLightsMap.get(sceneRoom.name) ?? []
-              return (
-                <div key={sceneRoom.name}>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-200">
-                      {sceneRoom.name}
-                    </h3>
-                    {roomLights.length > 1 && (
-                      <button
-                        onClick={() => handleApplyToAllInRoom(sceneRoom.name)}
-                        className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-fairy-400 transition-colors hover:bg-fairy-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                      >
-                        Apply first to all
-                      </button>
+            <>
+              {/* Search/filter at top */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="search"
+                  placeholder="Search lights by name..."
+                  value={lightSearch}
+                  onChange={e => setLightSearch(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-slate-700 bg-slate-800 pl-10 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                />
+              </div>
+
+              {sceneRooms.map(sceneRoom => {
+                const roomLights = roomLightsMap.get(sceneRoom.name) ?? []
+                const filteredLights = filterRoomLights(roomLights)
+
+                return (
+                  <div key={sceneRoom.name}>
+                    {/* Room heading with "Apply to all" */}
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-200">
+                        {sceneRoom.name}
+                        {roomLights.length > 0 && (
+                          <span className="ml-1.5 text-xs font-normal text-slate-500">
+                            ({roomLights.length} light{roomLights.length !== 1 ? 's' : ''})
+                          </span>
+                        )}
+                      </h3>
+                      {roomLights.length > 1 && (
+                        <button
+                          onClick={() => handleApplyToAllInRoom(sceneRoom.name)}
+                          className="min-h-[44px] flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-fairy-400 transition-colors hover:bg-fairy-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          Apply to all
+                        </button>
+                      )}
+                    </div>
+
+                    {roomLights.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-700 py-6 text-center">
+                        <p className="text-xs text-slate-500">
+                          No lights assigned to this room.
+                        </p>
+                        <Link
+                          to={`/rooms/${encodeURIComponent(sceneRoom.name)}`}
+                          className="mt-1 inline-block text-xs text-fairy-400 hover:underline"
+                        >
+                          Set up lights for {sceneRoom.name}
+                        </Link>
+                      </div>
+                    ) : filteredLights.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                        No lights match "{lightSearch}" in this room.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {filteredLights.map(rl => {
+                          const ls = lightStates.get(rl.light_id)
+                          if (!ls) return null
+                          return (
+                            <LightEditorCard
+                              key={rl.light_id}
+                              state={ls}
+                              livePreview={livePreviewLights.has(rl.light_id)}
+                              onChange={updated =>
+                                handleLightStateChange(rl.light_id, updated)
+                              }
+                              onLivePreviewToggle={() =>
+                                toggleLivePreview(rl.light_id)
+                              }
+                            />
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
-
-                  {roomLights.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-700 py-6 text-center">
-                      <p className="text-xs text-slate-500">
-                        No lights assigned to this room.
-                      </p>
-                      <Link
-                        to={`/rooms/${encodeURIComponent(sceneRoom.name)}`}
-                        className="mt-1 inline-block text-xs text-fairy-400 hover:underline"
-                      >
-                        Set up lights for {sceneRoom.name}
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {roomLights.map(rl => {
-                        const ls = lightStates.get(rl.light_id)
-                        if (!ls) return null
-                        return (
-                          <LightEditorCard
-                            key={rl.light_id}
-                            state={ls}
-                            livePreview={livePreviewLights.has(rl.light_id)}
-                            onChange={updated =>
-                              handleLightStateChange(rl.light_id, updated)
-                            }
-                            onLivePreviewToggle={() =>
-                              toggleLivePreview(rl.light_id)
-                            }
-                          />
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })
+                )
+              })}
+            </>
           )}
         </Tabs.Content>
 
@@ -746,7 +821,7 @@ export default function SceneEditorPage() {
           <section>
             <h3 className="mb-3 text-sm font-medium text-slate-400">Modes</h3>
             <div className="flex flex-wrap gap-2">
-              {MODES.map(mode => {
+              {availableModes.map(mode => {
                 const selected = modes.includes(mode)
                 return (
                   <button

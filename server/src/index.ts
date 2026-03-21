@@ -11,6 +11,9 @@ import roomsRoutes from './routes/rooms.js'
 import scenesRoutes from './routes/scenes.js'
 import lightsRoutes from './routes/lights.js'
 import systemRoutes from './routes/system.js'
+import hubitatRoutes from './routes/hubitat.js'
+import motionRoutes from './routes/motion.js'
+import { motionHandler } from './lib/motion-handler.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -37,20 +40,56 @@ app.use('/api/rooms', roomsRoutes)
 app.use('/api/scenes', scenesRoutes)
 app.use('/api/lights', lightsRoutes)
 app.use('/api/system', systemRoutes)
+app.use('/api/hubitat', hubitatRoutes)
+app.use('/api/motion', motionRoutes)
 
 // Hubitat webhook handler
-app.post('/hubitat', (req, res) => {
+app.post('/hubitat', async (req, res) => {
   try {
     const event = req.body
     console.log('Hubitat event:', JSON.stringify(event))
 
+    const displayName: string = event.displayName ?? 'unknown'
+    const eventName: string = event.name ?? ''
+    const eventValue: string = String(event.value ?? '')
+
     // Log the event
     run(
       'INSERT INTO logs (message, debug, category) VALUES (?, ?, ?)',
-      [`Hubitat: ${event.displayName ?? 'unknown'} ${event.name ?? ''} = ${event.value ?? ''}`, JSON.stringify(event), 'hubitat'],
+      [`Hubitat: ${displayName} ${eventName} = ${eventValue}`, JSON.stringify(event), 'hubitat'],
     )
 
-    // Emit to connected clients
+    // Route events to appropriate handlers
+    switch (eventName) {
+      case 'motion':
+        await motionHandler.handleMotionEvent(
+          displayName,
+          eventValue as 'active' | 'inactive',
+        )
+        break
+
+      case 'temperature':
+        await motionHandler.handleTemperatureEvent(
+          displayName,
+          Number(eventValue),
+        )
+        break
+
+      case 'illuminance':
+      case 'lux':
+        await motionHandler.handleLuxEvent(displayName, Number(eventValue))
+        break
+
+      case 'battery':
+        // Simple db update for battery levels
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.battery', ?), updated_at = datetime('now') WHERE label = ?`,
+          [eventValue, displayName],
+        )
+        break
+    }
+
+    // Emit to connected clients for real-time UI updates
     io.emit('hubitat:event', event)
 
     res.json({ success: true })

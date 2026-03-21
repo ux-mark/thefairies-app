@@ -1,0 +1,56 @@
+import axios from 'axios'
+
+interface WeatherData {
+  temp: number
+  description: string
+  icon: string
+  humidity: number
+  wind_speed: number
+}
+
+interface WeatherCache {
+  data: WeatherData
+  fetchedAt: number
+}
+
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+let cache: WeatherCache | null = null
+
+export async function getCurrentWeather(): Promise<WeatherData> {
+  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
+    return cache.data
+  }
+
+  const apiKey = process.env.OPENWEATHER_API
+  const lat = process.env.LATITUDE
+  const lon = process.env.LONGITUDE
+
+  if (!apiKey || !lat || !lon) {
+    throw new Error('Missing OPENWEATHER_API, LATITUDE, or LONGITUDE env vars')
+  }
+
+  const res = await axios.get(
+    'https://api.openweathermap.org/data/3.0/onecall',
+    {
+      params: {
+        lat,
+        lon,
+        appid: apiKey,
+        units: 'metric',
+      },
+      timeout: 10000,
+    },
+  )
+
+  const current = res.data.current
+  const weather: WeatherData = {
+    temp: current.temp,
+    description: current.weather?.[0]?.description ?? '',
+    icon: current.weather?.[0]?.icon ?? '',
+    humidity: current.humidity,
+    wind_speed: current.wind_speed,
+  }
+
+  cache = { data: weather, fetchedAt: Date.now() }
+  return weather
+}

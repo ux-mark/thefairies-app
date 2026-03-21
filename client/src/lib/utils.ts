@@ -60,5 +60,24 @@ export function getLightColorHex(light: { color: { hue: number; saturation: numb
   return kelvinToHex(light.color.kelvin)
 }
 
-export const MODES = ['Morning', 'Day', 'Evening', 'Night', 'Away', 'Movie', 'Party'] as const
-export type Mode = typeof MODES[number]
+export function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): T & { cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout>
+  const debounced = (...args: any[]) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), ms)
+  }
+  debounced.cancel = () => clearTimeout(timer)
+  return debounced as T & { cancel: () => void }
+}
+
+// Default modes — these are overridden by API data from /api/system/current
+// The actual modes come from the database (all_modes in current_state table)
+export const DEFAULT_MODES = [
+  'Early Morning',
+  'Morning',
+  'Afternoon',
+  'Evening',
+  'Late Evening',
+  'Night',
+  'Sleep Time',
+] as const
