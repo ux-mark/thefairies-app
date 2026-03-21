@@ -170,6 +170,20 @@ export interface SunScheduleEntry {
   isPast: boolean
 }
 
+export interface SubwayArrival {
+  routeId: string
+  direction: 'N' | 'S'
+  arrivalTime: number
+  minutesAway: number
+  stopId: string
+}
+
+export interface MtaStatus {
+  status: 'green' | 'orange' | 'red'
+  nextArrival: SubwayArrival | null
+  arrivals: SubwayArrival[]
+}
+
 // ── Fetch wrapper ────────────────────────────────────────────────────────────
 
 const API_BASE = '/api'
@@ -339,6 +353,10 @@ export const api = {
     allOff: () => fetchApi<{ success: boolean; actions: string[] }>('/system/all-off', { method: 'POST' }),
     nighttime: () => fetchApi<{ success: boolean; mode: string; excludeRooms: string[]; actions: string[] }>('/system/nighttime', { method: 'POST' }),
     guestNight: () => fetchApi<{ success: boolean; mode: string; excludeRooms: string[]; actions: string[] }>('/system/guest-night', { method: 'POST' }),
+    getMtaStatus: (station?: string, direction?: string) =>
+      fetchApi<MtaStatus>(`/system/mta/status?station=${station || '120'}&direction=${direction || 'S'}`),
+    getMtaArrivals: (station?: string, direction?: string) =>
+      fetchApi<SubwayArrival[]>(`/system/mta/arrivals?station=${station || '120'}&direction=${direction || 'both'}`),
     getLogs: (limit?: number, category?: string) => {
       const params = new URLSearchParams()
       if (limit) params.set('limit', String(limit))

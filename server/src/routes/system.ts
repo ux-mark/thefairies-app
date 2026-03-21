@@ -360,10 +360,24 @@ router.get('/battery', (_req: Request, res: Response) => {
 // GET /mta/arrivals — get subway arrivals
 router.get('/mta/arrivals', async (req: Request, res: Response) => {
   try {
-    const station = (req.query.station as string) || '103'
+    const station = (req.query.station as string) || '120'
     const direction = (req.query.direction as string) || 'both'
-    const arrivals = await mtaClient.getArrivals(station, direction)
-    res.json(arrivals)
+    const feed = (req.query.feed as string) || '123456S'
+    const arrivals = await mtaClient.getArrivals(station, direction, feed)
+    res.json(arrivals.slice(0, Number(req.query.limit) || 10))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// GET /mta/status — get subway status colour
+router.get('/mta/status', async (req: Request, res: Response) => {
+  try {
+    const station = (req.query.station as string) || '120'
+    const direction = (req.query.direction as string) || 'S'
+    const result = await mtaClient.getStatus(station, direction)
+    res.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })

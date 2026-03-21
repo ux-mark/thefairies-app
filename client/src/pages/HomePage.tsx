@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind, Power, Moon, Users } from 'lucide-react'
+import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
-import type { Room, Scene } from '@/lib/api'
+import type { Room, Scene, MtaStatus } from '@/lib/api'
 import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
 
 // ── Skeleton loader ──────────────────────────────────────────────────────────
@@ -312,6 +312,86 @@ function QuickActions() {
   )
 }
 
+// ── MTA subway card ─────────────────────────────────────────────────────────
+
+const STATUS_COLORS: Record<MtaStatus['status'], string> = {
+  green: 'bg-green-500',
+  orange: 'bg-orange-500',
+  red: 'bg-red-500',
+}
+
+const ROUTE_COLORS: Record<string, string> = {
+  '1': 'bg-red-600 text-white',
+  '2': 'bg-red-600 text-white',
+  '3': 'bg-red-600 text-white',
+  '4': 'bg-green-600 text-white',
+  '5': 'bg-green-600 text-white',
+  '6': 'bg-green-600 text-white',
+  '7': 'bg-purple-600 text-white',
+}
+
+function MtaCard() {
+  const { data: prefs } = useQuery({
+    queryKey: ['system', 'preferences'],
+    queryFn: api.system.getPreferences,
+  })
+
+  const station = prefs?.mta_station || '120'
+  const direction = prefs?.mta_direction || 'S'
+
+  const { data: mtaStatus } = useQuery({
+    queryKey: ['mta', 'status', station, direction],
+    queryFn: () => api.system.getMtaStatus(station, direction),
+    retry: false,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  })
+
+  if (!mtaStatus) return null
+
+  const dirLabel = direction === 'S' ? 'Downtown' : direction === 'N' ? 'Uptown' : 'Both'
+
+  const formatTime = (unix: number) => {
+    const d = new Date(unix * 1000)
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  }
+
+  return (
+    <div className="card mb-6 rounded-xl border px-4 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Train className="h-4 w-4 text-body" />
+        <span className="text-heading text-sm font-semibold">Subway</span>
+        <span className="text-caption text-xs">{dirLabel}</span>
+        <span className={cn('ml-auto h-2.5 w-2.5 rounded-full', STATUS_COLORS[mtaStatus.status])} />
+      </div>
+      {mtaStatus.arrivals.length > 0 ? (
+        <div className="space-y-1.5">
+          {mtaStatus.arrivals.map((a, i) => (
+            <div key={`${a.stopId}-${a.arrivalTime}-${i}`} className="flex items-center gap-2 text-sm">
+              <span
+                className={cn(
+                  'flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold',
+                  ROUTE_COLORS[a.routeId] || 'bg-gray-500 text-white',
+                )}
+              >
+                {a.routeId}
+              </span>
+              <span className="text-heading font-medium">
+                {a.minutesAway} min
+              </span>
+              <span className="text-caption text-xs">
+                {formatTime(a.arrivalTime)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-caption text-sm">No upcoming trains</p>
+      )}
+    </div>
+  )
+}
+
 // ── Home page ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -361,6 +441,8 @@ export default function HomePage() {
       <DeviceOnboarding />
 
       <QuickActions />
+
+      <MtaCard />
 
       <WeatherCard />
 

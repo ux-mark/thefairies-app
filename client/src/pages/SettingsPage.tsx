@@ -14,6 +14,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Train,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { SunScheduleEntry } from '@/lib/api'
@@ -520,6 +521,83 @@ function TimersSection() {
   )
 }
 
+// ── Subway section ──────────────────────────────────────────────────────────
+
+function SubwaySection() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  const { data: prefs } = useQuery({
+    queryKey: ['system', 'preferences'],
+    queryFn: api.system.getPreferences,
+  })
+
+  const mutation = useMutation({
+    mutationFn: ({ key, value }: { key: string; value: string }) =>
+      api.system.setPreference(key, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system', 'preferences'] })
+      queryClient.invalidateQueries({ queryKey: ['mta'] })
+      toast({ message: 'Subway settings saved' })
+    },
+    onError: () => toast({ message: 'Failed to save settings', type: 'error' }),
+  })
+
+  const stationId = prefs?.mta_station || '120'
+  const direction = prefs?.mta_direction || 'S'
+
+  return (
+    <Section title="Subway">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-heading text-sm">Station ID</p>
+            <p className="text-caption text-xs">MTA stop ID (e.g. 120 for 103rd St)</p>
+          </div>
+          <input
+            type="text"
+            value={stationId}
+            onChange={e => mutation.mutate({ key: 'mta_station', value: e.target.value })}
+            className="input-field w-24 rounded-lg border px-3 py-2 text-sm text-center focus:border-fairy-500 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-heading text-sm">Direction</p>
+            <p className="text-caption text-xs">Which direction to show on the home page</p>
+          </div>
+          <div className="surface flex rounded-lg border" style={{ borderColor: 'var(--border-secondary)' }}>
+            {([
+              { value: 'S', label: 'Downtown' },
+              { value: 'N', label: 'Uptown' },
+              { value: 'both', label: 'Both' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => mutation.mutate({ key: 'mta_direction', value: opt.value })}
+                className={cn(
+                  'px-3 py-2 text-sm font-medium transition-colors',
+                  direction === opt.value
+                    ? 'bg-fairy-500 text-white'
+                    : 'text-caption hover:text-[var(--text-primary)]',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-sm text-caption">
+          <Train className="h-4 w-4" />
+          Uses MTA real-time GTFS feed (no API key required)
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ── System section ──────────────────────────────────────────────────────────
 
 function SystemSection() {
@@ -590,6 +668,7 @@ export default function SettingsPage() {
         <ModesSection />
         <NightModeSection />
         <SunScheduleSection />
+        <SubwaySection />
         <DevicesSection />
         <TimersSection />
         <SystemSection />

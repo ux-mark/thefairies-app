@@ -8,3 +8,4 @@ dist/
 *.sqlite3
 .vite/
 .claude/fairy-claude-backup/
+*.env.old
