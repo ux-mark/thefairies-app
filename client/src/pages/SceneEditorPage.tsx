@@ -119,9 +119,12 @@ function LightEditorCard({
 
   return (
     <div className="card rounded-xl border transition-colors">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-3 p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-fairy-500"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded) } }}
+        className="flex w-full cursor-pointer items-center gap-3 p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-fairy-500"
       >
         <div
           className={cn(
@@ -163,7 +166,7 @@ function LightEditorCard({
         >
           <Power className="h-5 w-5" />
         </button>
-      </button>
+      </div>
 
       {expanded && isOn && (
         <div className="border-t p-4">

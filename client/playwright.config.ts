@@ -7,6 +7,7 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
     headless: true,
     viewport: { width: 375, height: 812 }, // iPhone-sized for mobile-first testing
+    screenshot: 'only-on-failure',
   },
   webServer: {
     command: 'npx vite --port 5173',
