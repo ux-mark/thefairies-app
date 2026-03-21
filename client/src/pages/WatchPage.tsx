@@ -65,7 +65,7 @@ function WatchRoomView({
           <button
             onClick={() => deactivateMutation.mutate(room.current_scene!)}
             disabled={deactivateMutation.isPending}
-            className="mt-2 block w-full min-h-[44px] rounded-xl surface py-3 text-sm font-medium text-slate-300 transition-colors active:bg-slate-700"
+            className="mt-2 block w-full min-h-[44px] rounded-xl surface py-3 text-sm font-medium text-heading transition-colors active:brightness-90 dark:active:brightness-110"
           >
             Turn Off
           </button>
@@ -83,7 +83,7 @@ function WatchRoomView({
               'active:scale-[0.98]',
               room.current_scene === scene.name
                 ? 'bg-fairy-500 text-white'
-                : 'surface text-heading active:bg-slate-700',
+                : 'surface text-heading active:brightness-90 dark:active:brightness-110',
             )}
           >
             {scene.icon && <span className="mr-2 text-lg">{scene.icon}</span>}

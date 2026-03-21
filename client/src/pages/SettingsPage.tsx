@@ -257,7 +257,7 @@ function SunScheduleSection() {
           ))}
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+        <div className="flex items-center gap-2 text-sm text-caption">
           <Sun className="h-4 w-4" />
           No sun schedule available
         </div>
@@ -316,7 +316,7 @@ function DevicesSection() {
           </div>
           <div className="flex items-center gap-1.5 text-sm">
             {lifxLoading ? (
-              <RefreshCw className="h-4 w-4 animate-spin text-slate-500" />
+              <RefreshCw className="h-4 w-4 animate-spin text-caption" />
             ) : lights ? (
               <CheckCircle className="h-4 w-4 text-green-400" />
             ) : (
@@ -403,7 +403,7 @@ function TimersSection() {
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+        <div className="flex items-center gap-2 text-sm text-caption">
           <Timer className="h-4 w-4" />
           No active timers
         </div>
@@ -431,13 +431,13 @@ function SystemSection() {
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-[var(--text-secondary)]">Version</span>
-          <span className="text-slate-200">3.0.0</span>
+          <span className="text-heading">3.0.0</span>
         </div>
         {health && (
           <>
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Uptime</span>
-              <span className="text-slate-200">{formatUptime(health.uptime)}</span>
+              <span className="text-heading">{formatUptime(health.uptime)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Database</span>

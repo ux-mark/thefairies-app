@@ -152,7 +152,7 @@ const deviceTypeBadgeClasses: Record<string, string> = {
 }
 
 function DeviceTypeBadge({ type }: { type: string }) {
-  const cls = deviceTypeBadgeClasses[type] ?? 'bg-slate-700 text-body'
+  const cls = deviceTypeBadgeClasses[type] ?? 'surface text-body'
   return (
     <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide', cls)}>
       {type}
@@ -664,7 +664,7 @@ export default function RoomDetailPage() {
               className={cn(
                 'relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                effectiveAuto ? 'bg-fairy-500' : 'bg-slate-700',
+                effectiveAuto ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
               )}
             >
               <Switch.Thumb
@@ -1095,7 +1095,7 @@ export default function RoomDetailPage() {
       </section>
 
       {/* ── Sticky save bar ────────────────────────────────────────────────── */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border-primary)] bg-slate-950/95 p-4 backdrop-blur-sm md:bottom-0 md:left-56">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border-primary)] chrome p-4 md:bottom-0 md:left-56">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Link
             to="/rooms"

@@ -38,7 +38,7 @@ function LogEntry({
           onClick={() => log.debug && setExpanded(!expanded)}
           className={cn(
             'mt-0.5 shrink-0',
-            log.debug ? 'text-caption hover:text-slate-300' : 'text-transparent',
+            log.debug ? 'text-caption hover:text-[var(--text-primary)]' : 'text-transparent',
           )}
           disabled={!log.debug}
         >
@@ -152,7 +152,7 @@ export default function LogsPage() {
             ))}
           </div>
         ) : logs && logs.length > 0 ? (
-          <div className="divide-y divide-slate-800 px-4">
+          <div className="divide-y divide-[var(--border-primary)] px-4">
             {logs.map(log => (
               <LogEntry key={log.id} log={log} />
             ))}
