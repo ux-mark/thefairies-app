@@ -1,5 +1,8 @@
 import { lifxClient, BatchState } from './lifx-client.js'
 import { hubitatClient } from './hubitat-client.js'
+import { twinklyClient } from './twinkly-client.js'
+import { fairyDeviceClient } from './fairy-device-client.js'
+import { timerManager } from './timer-manager.js'
 import { getAll, getOne, run } from '../db/index.js'
 
 interface LightCommand {
@@ -36,7 +39,59 @@ interface HubitatDeviceCommand {
   value?: string | number
 }
 
-type Command = LightCommand | SceneCommand | AllOffCommand | LightOffCommand | HubitatDeviceCommand
+interface TwinklyCommand {
+  type: 'twinkly'
+  name: string
+  command: 'on' | 'off'
+}
+
+interface FairyDeviceCommand {
+  type: 'fairy_device'
+  name: string
+  command: string
+  id?: string  // brightness as string (legacy format)
+}
+
+interface FairySceneCommand {
+  type: 'fairy_scene'
+  name: string  // scene name to chain-activate
+  command?: string
+}
+
+interface SceneTimerCommand {
+  type: 'scene_timer'
+  name: string
+  command: string  // target scene to activate after delay
+  id?: string      // delay in seconds (legacy format)
+  duration?: number
+}
+
+interface ModeUpdateCommand {
+  type: 'mode_update'
+  name: string  // mode name to switch to
+  command?: string
+}
+
+interface LifxEffectCommand {
+  type: 'lifx_effect'
+  name: string
+  selector: string
+  effect: 'breathe' | 'pulse' | 'move'
+  effect_params?: Record<string, unknown>
+}
+
+type Command =
+  | LightCommand
+  | SceneCommand
+  | AllOffCommand
+  | LightOffCommand
+  | HubitatDeviceCommand
+  | TwinklyCommand
+  | FairyDeviceCommand
+  | FairySceneCommand
+  | SceneTimerCommand
+  | ModeUpdateCommand
+  | LifxEffectCommand
 
 interface SceneRow {
   name: string
@@ -167,6 +222,90 @@ export async function activateScene(sceneName: string): Promise<void> {
           log(`Hubitat device ${cmd.device_id}: ${cmd.command}${cmd.value !== undefined ? ` ${cmd.value}` : ''}`)
           break
         }
+
+        case 'twinkly': {
+          // Look up Twinkly device IP from device_rooms or fairy_devices
+          const twinklyDev = getOne<{ IPAddress: string }>(
+            "SELECT IPAddress FROM hub_devices WHERE label = ? AND device_type = 'twinkly'",
+            [cmd.name],
+          )
+          if (twinklyDev?.IPAddress) {
+            if (cmd.command === 'on') {
+              await twinklyClient.turnOn(twinklyDev.IPAddress)
+            } else {
+              await twinklyClient.turnOff(twinklyDev.IPAddress)
+            }
+            log(`Twinkly ${cmd.name}: ${cmd.command}`)
+          } else {
+            log(`Twinkly device not found: ${cmd.name}`)
+          }
+          break
+        }
+
+        case 'fairy_device': {
+          const fairyDev = getOne<{ IPAddress: string }>(
+            "SELECT IPAddress FROM hub_devices WHERE label = ? AND device_type = 'fairy'",
+            [cmd.name],
+          )
+          if (fairyDev?.IPAddress) {
+            const brightness = cmd.id ? parseInt(cmd.id, 10) : 100
+            if (cmd.command.toLowerCase() === 'off') {
+              await fairyDeviceClient.turnOff(fairyDev.IPAddress)
+            } else {
+              await fairyDeviceClient.setBrightness(fairyDev.IPAddress, Math.round(brightness * 2.55))
+            }
+            log(`Fairy device ${cmd.name}: ${cmd.command} (brightness: ${cmd.id || 'default'})`)
+          } else {
+            log(`Fairy device not found: ${cmd.name}`)
+          }
+          break
+        }
+
+        case 'fairy_scene': {
+          // Chain: activate another scene
+          try {
+            await activateScene(cmd.name)
+            log(`Chained scene activation: ${cmd.name}`)
+          } catch (chainErr) {
+            const chainMsg = chainErr instanceof Error ? chainErr.message : String(chainErr)
+            log(`Error chaining scene ${cmd.name}: ${chainMsg}`)
+          }
+          break
+        }
+
+        case 'scene_timer': {
+          const delaySec = cmd.duration || (cmd.id ? parseInt(cmd.id, 10) : 300)
+          const targetScene = cmd.command || cmd.name
+          timerManager.createTimer(sceneName, targetScene, delaySec)
+          log(`Scene timer: activate "${targetScene}" in ${delaySec}s`)
+          break
+        }
+
+        case 'mode_update': {
+          const newMode = cmd.name || cmd.command || ''
+          if (newMode) {
+            run(
+              `INSERT INTO current_state (key, value, updated_at)
+               VALUES ('mode', ?, datetime('now'))
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+              [newMode],
+            )
+            log(`Mode updated to: ${newMode}`)
+          }
+          break
+        }
+
+        case 'lifx_effect': {
+          const effectMethod = cmd.effect === 'breathe' ? lifxClient.breathe
+            : cmd.effect === 'pulse' ? lifxClient.pulse
+            : cmd.effect === 'move' ? lifxClient.move
+            : null
+          if (effectMethod) {
+            await effectMethod(cmd.selector, cmd.effect_params || {})
+            log(`LIFX effect ${cmd.effect} on ${cmd.selector}`)
+          }
+          break
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -228,6 +367,60 @@ export async function deactivateScene(sceneName: string): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log(`Error turning off Hubitat device: ${msg}`)
+    }
+  }
+
+  // Turn off Twinkly devices
+  const twinklyCommands = commands.filter(
+    (cmd): cmd is TwinklyCommand => cmd.type === 'twinkly',
+  )
+  for (const cmd of twinklyCommands) {
+    try {
+      const dev = getOne<{ IPAddress: string }>(
+        "SELECT IPAddress FROM hub_devices WHERE label = ? AND device_type = 'twinkly'",
+        [cmd.name],
+      )
+      if (dev?.IPAddress) {
+        await twinklyClient.turnOff(dev.IPAddress)
+        log(`Turned off Twinkly: ${cmd.name}`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`Error turning off Twinkly: ${msg}`)
+    }
+  }
+
+  // Turn off Fairy devices
+  const fairyCommands = commands.filter(
+    (cmd): cmd is FairyDeviceCommand => cmd.type === 'fairy_device',
+  )
+  for (const cmd of fairyCommands) {
+    try {
+      const dev = getOne<{ IPAddress: string }>(
+        "SELECT IPAddress FROM hub_devices WHERE label = ? AND device_type = 'fairy'",
+        [cmd.name],
+      )
+      if (dev?.IPAddress) {
+        await fairyDeviceClient.turnOff(dev.IPAddress)
+        log(`Turned off Fairy device: ${cmd.name}`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`Error turning off Fairy device: ${msg}`)
+    }
+  }
+
+  // Stop LIFX effects
+  const effectCommands = commands.filter(
+    (cmd): cmd is LifxEffectCommand => cmd.type === 'lifx_effect',
+  )
+  for (const cmd of effectCommands) {
+    try {
+      await lifxClient.effectsOff(cmd.selector)
+      log(`Stopped effects on: ${cmd.selector}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`Error stopping effects: ${msg}`)
     }
   }
 

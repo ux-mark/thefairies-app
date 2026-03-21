@@ -11,8 +11,10 @@ import {
   Trash2,
   CheckCircle,
   AlertCircle,
+  Sun,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import type { SunScheduleEntry } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
@@ -166,6 +168,58 @@ function ModesSection() {
           <p className="text-sm text-slate-500">No modes configured.</p>
         )}
       </div>
+    </Section>
+  )
+}
+
+// ── Sun Schedule section ────────────────────────────────────────────────────
+
+function SunScheduleSection() {
+  const { data: schedule } = useQuery({
+    queryKey: ['system', 'sun-schedule'],
+    queryFn: api.system.getSunSchedule,
+    refetchInterval: 60_000,
+  })
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso)
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  }
+
+  const formatPhase = (phase: string) =>
+    phase.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())
+
+  return (
+    <Section title="Sun Schedule">
+      {schedule && schedule.length > 0 ? (
+        <div className="space-y-2">
+          {schedule.map((entry: SunScheduleEntry) => (
+            <div
+              key={entry.sunPhase}
+              className={cn(
+                'flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2',
+                entry.isPast && 'opacity-40',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Sun className="h-4 w-4 text-amber-400" />
+                <div>
+                  <p className="text-sm text-slate-200">{entry.mode}</p>
+                  <p className="text-xs text-slate-500">{formatPhase(entry.sunPhase)}</p>
+                </div>
+              </div>
+              <span className="font-mono text-sm text-slate-400">
+                {formatTime(entry.time)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Sun className="h-4 w-4" />
+          No sun schedule available
+        </div>
+      )}
     </Section>
   )
 }
@@ -383,6 +437,7 @@ export default function SettingsPage() {
       <div className="space-y-4">
         <GeneralSection />
         <ModesSection />
+        <SunScheduleSection />
         <DevicesSection />
         <TimersSection />
         <SystemSection />

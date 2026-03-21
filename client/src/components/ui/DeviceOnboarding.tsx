@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Lightbulb, X, ArrowRight } from 'lucide-react'
+import { Lightbulb, ToggleLeft, X, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+
+const SWITCH_DEVICE_TYPES = ['switch', 'dimmer']
 
 /**
  * DeviceOnboarding
  *
  * A notification banner that appears on the HomePage when there are
- * unassigned LIFX lights. Helps users discover new devices and assign
- * them to rooms quickly.
+ * unassigned LIFX lights or Hubitat switches/dimmers. Helps users
+ * discover new devices and assign them to rooms quickly.
  */
 export default function DeviceOnboarding() {
   const [dismissed, setDismissed] = useState(false)
@@ -27,16 +29,60 @@ export default function DeviceOnboarding() {
     staleTime: 60_000,
   })
 
+  const { data: allHubDevices } = useQuery({
+    queryKey: ['hubitat', 'devices'],
+    queryFn: api.hubitat.getDevices,
+    staleTime: 60_000,
+  })
+
+  const { data: allDeviceRoomAssignments } = useQuery({
+    queryKey: ['hubitat', 'device-rooms'],
+    queryFn: api.hubitat.getDeviceRooms,
+    staleTime: 60_000,
+  })
+
   // Calculate unassigned lights
-  const assignedIds = new Set(allAssignments?.map(a => a.light_id) ?? [])
-  const unassignedLights = allLights?.filter(l => !assignedIds.has(l.id)) ?? []
+  const assignedLightIds = new Set(allAssignments?.map(a => a.light_id) ?? [])
+  const unassignedLights = allLights?.filter(l => !assignedLightIds.has(l.id)) ?? []
+
+  // Calculate unassigned switches/dimmers
+  const assignedDeviceIds = new Set(
+    allDeviceRoomAssignments?.map(a => a.device_id) ?? [],
+  )
+  const unassignedSwitches =
+    allHubDevices?.filter(
+      d =>
+        SWITCH_DEVICE_TYPES.includes(d.device_type) &&
+        !assignedDeviceIds.has(String(d.id)),
+    ) ?? []
+
+  const lightCount = unassignedLights.length
+  const switchCount = unassignedSwitches.length
+  const totalCount = lightCount + switchCount
 
   // Don't render if dismissed, still loading, or nothing to show
-  if (dismissed || !allLights || !allAssignments || unassignedLights.length === 0) {
+  const lightsReady = !!allLights && !!allAssignments
+  const devicesReady = !!allHubDevices && !!allDeviceRoomAssignments
+  if (dismissed || (!lightsReady && !devicesReady) || totalCount === 0) {
     return null
   }
 
-  const count = unassignedLights.length
+  // Build a human-readable summary
+  const parts: string[] = []
+  if (lightCount > 0) parts.push(`${lightCount} light${lightCount !== 1 ? 's' : ''}`)
+  if (switchCount > 0)
+    parts.push(`${switchCount} switch${switchCount !== 1 ? 'es' : ''}`)
+  const summary = parts.join(' and ')
+
+  // Combine device names for preview pills
+  const previewItems = [
+    ...unassignedLights.slice(0, 3).map(l => ({ id: l.id, label: l.label, type: 'light' as const })),
+    ...unassignedSwitches.slice(0, Math.max(0, 3 - unassignedLights.length)).map(d => ({
+      id: String(d.id),
+      label: d.label,
+      type: 'switch' as const,
+    })),
+  ]
 
   return (
     <div
@@ -48,32 +94,45 @@ export default function DeviceOnboarding() {
       aria-live="polite"
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fairy-500/15">
-          <Lightbulb className="h-5 w-5 text-fairy-400" />
+        <div className="flex shrink-0 gap-1.5">
+          {lightCount > 0 && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-fairy-500/15">
+              <Lightbulb className="h-5 w-5 text-fairy-400" />
+            </div>
+          )}
+          {switchCount > 0 && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/15">
+              <ToggleLeft className="h-5 w-5 text-blue-400" />
+            </div>
+          )}
         </div>
 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-slate-100">
-            {count} new light{count !== 1 ? 's' : ''} detected
+            {summary} not assigned to rooms
           </p>
           <p className="mt-0.5 text-xs text-slate-400">
-            Assign {count === 1 ? 'it' : 'them'} to rooms so scenes and
-            automation can control {count === 1 ? 'it' : 'them'}.
+            Assign them to rooms so scenes and automation can control them.
           </p>
 
-          {/* Quick list of unassigned light names (max 3) */}
+          {/* Quick list of unassigned device names (max 3) */}
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {unassignedLights.slice(0, 3).map(light => (
+            {previewItems.map(item => (
               <span
-                key={light.id}
-                className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400"
+                key={item.id}
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                  item.type === 'light'
+                    ? 'bg-slate-800 text-slate-400'
+                    : 'bg-blue-500/10 text-blue-400',
+                )}
               >
-                {light.label}
+                {item.label}
               </span>
             ))}
-            {count > 3 && (
+            {totalCount > 3 && (
               <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                +{count - 3} more
+                +{totalCount - previewItems.length} more
               </span>
             )}
           </div>

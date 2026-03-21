@@ -14,6 +14,7 @@ import systemRoutes from './routes/system.js'
 import hubitatRoutes from './routes/hubitat.js'
 import motionRoutes from './routes/motion.js'
 import { motionHandler } from './lib/motion-handler.js'
+import { sunModeScheduler } from './lib/sun-mode-scheduler.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -115,6 +116,7 @@ io.on('connection', (socket) => {
 httpServer.listen(PORT, () => {
   console.log(`The Fairies server running on port ${PORT}`)
   console.log(`CORS origin: ${CORS_ORIGIN}`)
+  sunModeScheduler.init(io)
 })
 
 export { io }

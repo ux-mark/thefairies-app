@@ -137,12 +137,37 @@ export interface LightAssignment {
   max_kelvin: number
 }
 
+export interface HubDevice {
+  id: number
+  label: string
+  device_name: string
+  device_type: string
+  capabilities: string[]
+  room_name: string | null
+}
+
+export interface DeviceRoomAssignment {
+  id: number
+  device_id: string
+  device_label: string
+  device_type: string
+  room_name: string
+  config: Record<string, unknown>
+}
+
 export interface LifxScene {
   uuid: string
   name: string
   states: unknown[]
   created_at: number
   updated_at: number
+}
+
+export interface SunScheduleEntry {
+  sunPhase: string
+  mode: string
+  time: string
+  isPast: boolean
 }
 
 // ── Fetch wrapper ────────────────────────────────────────────────────────────
@@ -284,6 +309,7 @@ export const api = {
         wind_speed: number
       }>('/system/weather'),
     getSunTimes: () => fetchApi<Record<string, string>>('/system/sun'),
+    getSunSchedule: () => fetchApi<SunScheduleEntry[]>('/system/sun-schedule'),
     getModes: () => fetchApi<string[]>('/system/modes'),
     addMode: (mode: string) =>
       fetchApi<string[]>('/system/modes', {
@@ -329,6 +355,30 @@ export const api = {
     },
   },
   hubitat: {
+    getDevices: () => fetchApi<HubDevice[]>('/hubitat/devices'),
     syncDevices: () => fetchApi<unknown>('/hubitat/devices/sync'),
+    getDeviceRooms: () => fetchApi<DeviceRoomAssignment[]>('/hubitat/device-rooms'),
+    getDevicesForRoom: (room: string) =>
+      fetchApi<DeviceRoomAssignment[]>(
+        '/hubitat/device-rooms/' + encodeURIComponent(room),
+      ),
+    assignDevice: (data: {
+      device_id: string
+      device_label: string
+      device_type: string
+      room_name: string
+    }) =>
+      fetchApi<unknown>('/hubitat/device-rooms', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    unassignDevice: (deviceId: string, roomName: string) =>
+      fetchApi<unknown>(
+        '/hubitat/device-rooms/' +
+          encodeURIComponent(deviceId) +
+          '/' +
+          encodeURIComponent(roomName),
+        { method: 'DELETE' },
+      ),
   },
 }

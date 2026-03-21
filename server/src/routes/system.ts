@@ -4,6 +4,7 @@ import { getAll, getOne, run, db } from '../db/index.js'
 import { getCurrentWeather } from '../lib/weather-client.js'
 import { getSunTimes, getCurrentSunPhase } from '../lib/sun-tracker.js'
 import { timerManager } from '../lib/timer-manager.js'
+import { sunModeScheduler } from '../lib/sun-mode-scheduler.js'
 
 const router = Router()
 
@@ -178,6 +179,17 @@ router.get('/sun', (_req: Request, res: Response) => {
     const times = getSunTimes()
     const phase = getCurrentSunPhase()
     res.json({ ...times, phase })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// GET /sun-schedule — today's automatic mode transition schedule
+router.get('/sun-schedule', (_req: Request, res: Response) => {
+  try {
+    const schedule = sunModeScheduler.getSchedule()
+    res.json(schedule)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })

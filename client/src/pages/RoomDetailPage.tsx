@@ -18,7 +18,7 @@ import {
 import * as Switch from '@radix-ui/react-switch'
 import * as Tabs from '@radix-ui/react-tabs'
 import { api } from '@/lib/api'
-import type { Light, LightAssignment, RoomDetail, Sensor, Room } from '@/lib/api'
+import type { Light, LightAssignment, RoomDetail, Sensor, Room, HubDevice, DeviceRoomAssignment } from '@/lib/api'
 import { cn, getLightColorHex } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
@@ -141,6 +141,81 @@ function AssignedLightRow({
   )
 }
 
+// ── Device type badge ────────────────────────────────────────────────────────
+
+const deviceTypeBadgeClasses: Record<string, string> = {
+  switch: 'bg-blue-500/15 text-blue-400',
+  dimmer: 'bg-purple-500/15 text-purple-400',
+  contact: 'bg-amber-500/15 text-amber-400',
+  twinkly: 'bg-pink-500/15 text-pink-400',
+  fairy: 'bg-cyan-500/15 text-cyan-400',
+}
+
+function DeviceTypeBadge({ type }: { type: string }) {
+  const cls = deviceTypeBadgeClasses[type] ?? 'bg-slate-700 text-slate-400'
+  return (
+    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide', cls)}>
+      {type}
+    </span>
+  )
+}
+
+// ── Assigned device row ─────────────────────────────────────────────────────
+
+function AssignedDeviceRow({
+  assignment,
+  onRemove,
+}: {
+  assignment: DeviceRoomAssignment
+  onRemove: () => void
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-fairy-500/20 bg-fairy-500/5 px-3 py-2.5 transition-colors">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-200">
+          {assignment.device_label}
+        </p>
+      </div>
+      <DeviceTypeBadge type={assignment.device_type} />
+      <button
+        onClick={onRemove}
+        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+        aria-label={`Remove ${assignment.device_label} from this room`}
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+// ── Available device row ────────────────────────────────────────────────────
+
+function AvailableDeviceRow({
+  device,
+  onAdd,
+}: {
+  device: HubDevice
+  onAdd: () => void
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2.5 transition-colors hover:border-slate-700">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-200">
+          {device.label}
+        </p>
+      </div>
+      <DeviceTypeBadge type={device.device_type} />
+      <button
+        onClick={onAdd}
+        className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-fairy-500/15 text-fairy-400 transition-colors hover:bg-fairy-500/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+        aria-label={`Assign ${device.label} to this room`}
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function RoomDetailPage() {
@@ -149,8 +224,9 @@ export default function RoomDetailPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
-  // Search state for lights
+  // Search state for lights and devices
   const [lightSearch, setLightSearch] = useState('')
+  const [deviceSearch, setDeviceSearch] = useState('')
 
   // Active device tab
   const [activeTab, setActiveTab] = useState('lights')
@@ -178,6 +254,18 @@ export default function RoomDetailPage() {
   const { data: allAssignments } = useQuery({
     queryKey: ['lights', 'rooms'],
     queryFn: api.lights.getRoomAssignments,
+  })
+
+  // Fetch all Hubitat devices
+  const { data: allHubDevices } = useQuery({
+    queryKey: ['hubitat', 'devices'],
+    queryFn: api.hubitat.getDevices,
+  })
+
+  // Fetch all Hubitat device-room assignments
+  const { data: allDeviceRoomAssignments } = useQuery({
+    queryKey: ['hubitat', 'device-rooms'],
+    queryFn: api.hubitat.getDeviceRooms,
   })
 
   // Room settings state
@@ -269,6 +357,105 @@ export default function RoomDetailPage() {
     return new Map(allLights.map(l => [l.id, l]))
   }, [allLights])
 
+  // ── Device (switches/dimmers/twinkly/fairy) assignment state ──────────
+  const SWITCH_TYPES = ['switch', 'dimmer']
+  const OTHER_TYPES = ['twinkly', 'fairy']
+  const ALL_DEVICE_TYPES = [...SWITCH_TYPES, ...OTHER_TYPES]
+
+  // Devices assigned to THIS room (from API or local pending state)
+  const [pendingDeviceAssigns, setPendingDeviceAssigns] = useState<
+    { device_id: string; device_label: string; device_type: string }[]
+  >([])
+  const [pendingDeviceUnassigns, setPendingDeviceUnassigns] = useState<string[]>([])
+
+  // Devices currently assigned to this room from API
+  const apiDevicesForRoom = useMemo(() => {
+    if (!allDeviceRoomAssignments) return []
+    return allDeviceRoomAssignments.filter(a => a.room_name === name)
+  }, [allDeviceRoomAssignments, name])
+
+  // Effective assigned devices = API assignments minus pending unassigns plus pending assigns
+  const effectiveDeviceAssignments = useMemo(() => {
+    const base = apiDevicesForRoom.filter(
+      a => !pendingDeviceUnassigns.includes(a.device_id),
+    )
+    const pending: DeviceRoomAssignment[] = pendingDeviceAssigns.map(p => ({
+      id: 0,
+      device_id: p.device_id,
+      device_label: p.device_label,
+      device_type: p.device_type,
+      room_name: name!,
+      config: {},
+    }))
+    return [...base, ...pending]
+  }, [apiDevicesForRoom, pendingDeviceAssigns, pendingDeviceUnassigns, name])
+
+  // Assigned switches/dimmers
+  const assignedSwitches = useMemo(
+    () => effectiveDeviceAssignments.filter(d => SWITCH_TYPES.includes(d.device_type)),
+    [effectiveDeviceAssignments],
+  )
+
+  // Assigned other devices (twinkly/fairy)
+  const assignedOtherDevices = useMemo(
+    () => effectiveDeviceAssignments.filter(d => OTHER_TYPES.includes(d.device_type)),
+    [effectiveDeviceAssignments],
+  )
+
+  // All device IDs already assigned to ANY room
+  const deviceIdsAssignedToAnyRoom = useMemo(() => {
+    if (!allDeviceRoomAssignments) return new Set<string>()
+    return new Set(allDeviceRoomAssignments.map(a => a.device_id))
+  }, [allDeviceRoomAssignments])
+
+  // Hub devices available (not assigned to any room), matching relevant types
+  const availableSwitchDevices = useMemo(() => {
+    if (!allHubDevices) return []
+    const assignedIds = new Set(effectiveDeviceAssignments.map(d => d.device_id))
+    return allHubDevices.filter(
+      d =>
+        SWITCH_TYPES.includes(d.device_type) &&
+        !assignedIds.has(String(d.id)) &&
+        !deviceIdsAssignedToAnyRoom.has(String(d.id)),
+    )
+  }, [allHubDevices, effectiveDeviceAssignments, deviceIdsAssignedToAnyRoom])
+
+  const availableOtherDevices = useMemo(() => {
+    if (!allHubDevices) return []
+    const assignedIds = new Set(effectiveDeviceAssignments.map(d => d.device_id))
+    return allHubDevices.filter(
+      d =>
+        OTHER_TYPES.includes(d.device_type) &&
+        !assignedIds.has(String(d.id)) &&
+        !deviceIdsAssignedToAnyRoom.has(String(d.id)),
+    )
+  }, [allHubDevices, effectiveDeviceAssignments, deviceIdsAssignedToAnyRoom])
+
+  // Filter by device search
+  const filteredAssignedSwitches = useMemo(() => {
+    if (!deviceSearch.trim()) return assignedSwitches
+    const q = deviceSearch.toLowerCase()
+    return assignedSwitches.filter(d => d.device_label.toLowerCase().includes(q))
+  }, [assignedSwitches, deviceSearch])
+
+  const filteredAssignedOther = useMemo(() => {
+    if (!deviceSearch.trim()) return assignedOtherDevices
+    const q = deviceSearch.toLowerCase()
+    return assignedOtherDevices.filter(d => d.device_label.toLowerCase().includes(q))
+  }, [assignedOtherDevices, deviceSearch])
+
+  const filteredAvailableSwitches = useMemo(() => {
+    if (!deviceSearch.trim()) return availableSwitchDevices
+    const q = deviceSearch.toLowerCase()
+    return availableSwitchDevices.filter(d => d.label.toLowerCase().includes(q))
+  }, [availableSwitchDevices, deviceSearch])
+
+  const filteredAvailableOther = useMemo(() => {
+    if (!deviceSearch.trim()) return availableOtherDevices
+    const q = deviceSearch.toLowerCase()
+    return availableOtherDevices.filter(d => d.label.toLowerCase().includes(q))
+  }, [availableOtherDevices, deviceSearch])
+
   // Other rooms for parent selector (exclude self)
   const parentRoomOptions = useMemo(() => {
     return (allRooms ?? []).filter(r => r.name !== name)
@@ -291,12 +478,28 @@ export default function RoomDetailPage() {
       })
       // Save light assignments
       await api.lights.saveForRoom(name!, effectiveAssigned)
+      // Save device unassignments
+      for (const deviceId of pendingDeviceUnassigns) {
+        await api.hubitat.unassignDevice(deviceId, name!)
+      }
+      // Save device assignments
+      for (const d of pendingDeviceAssigns) {
+        await api.hubitat.assignDevice({
+          device_id: d.device_id,
+          device_label: d.device_label,
+          device_type: d.device_type,
+          room_name: name!,
+        })
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['rooms', name] })
       queryClient.invalidateQueries({ queryKey: ['lights', 'rooms'] })
+      queryClient.invalidateQueries({ queryKey: ['hubitat', 'device-rooms'] })
       setDirty(false)
+      setPendingDeviceAssigns([])
+      setPendingDeviceUnassigns([])
       toast({ message: 'Room saved successfully' })
     },
     onError: () =>
@@ -324,6 +527,29 @@ export default function RoomDetailPage() {
   const handleUnassign = (id: string) => {
     const newAssigned = effectiveAssigned.filter(a => a.id !== id)
     setAssigned(newAssigned)
+    setDirty(true)
+  }
+
+  const handleAssignDevice = (device: HubDevice) => {
+    setPendingDeviceAssigns(prev => [
+      ...prev,
+      {
+        device_id: String(device.id),
+        device_label: device.label,
+        device_type: device.device_type,
+      },
+    ])
+    setDirty(true)
+  }
+
+  const handleUnassignDevice = (deviceId: string) => {
+    // If it was a pending assign, just remove it from pending
+    const wasPending = pendingDeviceAssigns.find(p => p.device_id === deviceId)
+    if (wasPending) {
+      setPendingDeviceAssigns(prev => prev.filter(p => p.device_id !== deviceId))
+    } else {
+      setPendingDeviceUnassigns(prev => [...prev, deviceId])
+    }
     setDirty(true)
   }
 
@@ -519,6 +745,11 @@ export default function RoomDetailPage() {
             >
               <ToggleLeft className="h-4 w-4" />
               Switches
+              {effectiveDeviceAssignments.length > 0 && (
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                  {effectiveDeviceAssignments.length}
+                </span>
+              )}
             </Tabs.Trigger>
             <Tabs.Trigger
               value="sensors"
@@ -635,14 +866,146 @@ export default function RoomDetailPage() {
 
           {/* ── Switches tab ─────────────────────────────────────────────────── */}
           <Tabs.Content value="switches" className="space-y-6">
-            <div className="rounded-xl border border-dashed border-slate-700 py-10 text-center">
-              <ToggleLeft className="mx-auto mb-3 h-8 w-8 text-slate-600" />
-              <p className="text-sm text-slate-400">
-                Hubitat switch management coming soon.
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                You'll be able to assign on/off switches and dimmers to this room.
-              </p>
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                type="search"
+                placeholder="Search devices by name..."
+                value={deviceSearch}
+                onChange={e => setDeviceSearch(e.target.value)}
+                className="h-11 w-full rounded-lg border border-slate-700 bg-slate-800 pl-10 pr-3 text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+              />
+            </div>
+
+            {/* ── Switches & Dimmers section ─────────────────────────────────── */}
+            <div>
+              <h4 className="mb-3 text-sm font-medium text-slate-400">
+                Assigned Switches
+                {assignedSwitches.length > 0 && (
+                  <span className="ml-1.5 text-slate-500">
+                    ({assignedSwitches.length})
+                  </span>
+                )}
+              </h4>
+              {filteredAssignedSwitches.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredAssignedSwitches.map(d => (
+                    <AssignedDeviceRow
+                      key={d.device_id}
+                      assignment={d}
+                      onRemove={() => handleUnassignDevice(d.device_id)}
+                    />
+                  ))}
+                </div>
+              ) : assignedSwitches.length > 0 && deviceSearch.trim() ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No assigned switches match "{deviceSearch}".
+                </p>
+              ) : (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No switches assigned yet. Add them from the available devices below.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <h4 className="mb-3 text-sm font-medium text-slate-400">
+                Available Switches
+                {availableSwitchDevices.length > 0 && (
+                  <span className="ml-1.5 text-slate-500">
+                    ({availableSwitchDevices.length})
+                  </span>
+                )}
+              </h4>
+              {filteredAvailableSwitches.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredAvailableSwitches.map(d => (
+                    <AvailableDeviceRow
+                      key={d.id}
+                      device={d}
+                      onAdd={() => handleAssignDevice(d)}
+                    />
+                  ))}
+                </div>
+              ) : availableSwitchDevices.length > 0 && deviceSearch.trim() ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No available switches match "{deviceSearch}".
+                </p>
+              ) : availableSwitchDevices.length === 0 && allHubDevices ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  All switches and dimmers have been assigned to rooms.
+                </p>
+              ) : !allHubDevices ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No Hubitat devices found. Check your hub connection.
+                </p>
+              ) : null}
+            </div>
+
+            {/* ── Other Devices (Twinkly / Fairy) ────────────────────────────── */}
+            <div className="border-t border-slate-800 pt-6">
+              <h4 className="mb-3 text-sm font-medium text-slate-400">
+                Assigned Other Devices
+                {assignedOtherDevices.length > 0 && (
+                  <span className="ml-1.5 text-slate-500">
+                    ({assignedOtherDevices.length})
+                  </span>
+                )}
+              </h4>
+              {filteredAssignedOther.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredAssignedOther.map(d => (
+                    <AssignedDeviceRow
+                      key={d.device_id}
+                      assignment={d}
+                      onRemove={() => handleUnassignDevice(d.device_id)}
+                    />
+                  ))}
+                </div>
+              ) : assignedOtherDevices.length > 0 && deviceSearch.trim() ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No assigned devices match "{deviceSearch}".
+                </p>
+              ) : (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No Twinkly or Fairy devices assigned. Add them from below.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <h4 className="mb-3 text-sm font-medium text-slate-400">
+                Available Other Devices
+                {availableOtherDevices.length > 0 && (
+                  <span className="ml-1.5 text-slate-500">
+                    ({availableOtherDevices.length})
+                  </span>
+                )}
+              </h4>
+              {filteredAvailableOther.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredAvailableOther.map(d => (
+                    <AvailableDeviceRow
+                      key={d.id}
+                      device={d}
+                      onAdd={() => handleAssignDevice(d)}
+                    />
+                  ))}
+                </div>
+              ) : availableOtherDevices.length > 0 && deviceSearch.trim() ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No available devices match "{deviceSearch}".
+                </p>
+              ) : availableOtherDevices.length === 0 && allHubDevices ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  All Twinkly and Fairy devices have been assigned to rooms.
+                </p>
+              ) : !allHubDevices ? (
+                <p className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+                  No Hubitat devices found. Check your hub connection.
+                </p>
+              ) : null}
             </div>
           </Tabs.Content>
 
