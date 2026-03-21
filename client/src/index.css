@@ -111,9 +111,73 @@ body {
   background-color: var(--bg-sidebar);
 }
 
-/* ── Custom slider styles for better mobile touch targets ────────────────── */
+/* ── Slider styles (fairy-slider) — globally available ───────────────────── */
 
-input[type='range'] {
+.fairy-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  border-radius: 7px;
+  outline: none;
+  cursor: pointer;
+  padding: 15px 0;
+  background-clip: content-box;
+  box-sizing: content-box;
+}
+
+.fairy-slider:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 4px;
+}
+
+.fairy-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  margin-top: -8px;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.fairy-slider:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+  border-color: #10b981;
+}
+
+.fairy-slider::-webkit-slider-runnable-track {
+  height: 14px;
+  border-radius: 7px;
+}
+
+.fairy-slider::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.fairy-slider:active::-moz-range-thumb {
+  transform: scale(1.12);
+  border-color: #10b981;
+}
+
+.fairy-slider::-moz-range-track {
+  height: 14px;
+  border-radius: 7px;
+  background: transparent;
+}
+
+/* Fallback for range inputs without fairy-slider class */
+input[type='range']:not(.fairy-slider) {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
@@ -121,12 +185,12 @@ input[type='range'] {
   width: 100%;
 }
 
-input[type='range']::-webkit-slider-runnable-track {
+input[type='range']:not(.fairy-slider)::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: 4px;
 }
 
-input[type='range']::-webkit-slider-thumb {
+input[type='range']:not(.fairy-slider)::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 24px;
