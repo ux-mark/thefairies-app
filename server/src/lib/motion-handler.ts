@@ -61,11 +61,34 @@ export class MotionHandler {
   private sensorStates: Map<string, 'active' | 'inactive'> = new Map()
 
   // Find which room a sensor belongs to by its label
+  // Checks both device_rooms table and rooms.sensors JSON column
   private findRoomForSensor(sensorName: string): DeviceRoomRow | undefined {
-    return getOne<DeviceRoomRow>(
-      "SELECT * FROM device_rooms WHERE device_label = ? AND device_type = 'motion'",
+    // First check device_rooms table
+    const fromDeviceRooms = getOne<DeviceRoomRow>(
+      "SELECT * FROM device_rooms WHERE device_label = ? AND device_type IN ('motion', 'sensor')",
       [sensorName],
     )
+    if (fromDeviceRooms) return fromDeviceRooms
+
+    // Also check rooms.sensors JSON — legacy format stores sensors as [{name: "sensorLiving"}]
+    const rooms = getAll<{ name: string; sensors: string }>('SELECT name, sensors FROM rooms')
+    for (const room of rooms) {
+      try {
+        const sensors = JSON.parse(room.sensors || '[]')
+        if (Array.isArray(sensors) && sensors.some((s: { name?: string }) => s.name === sensorName)) {
+          return {
+            id: 0,
+            device_id: sensorName,
+            device_label: sensorName,
+            device_type: 'sensor',
+            room_name: room.name,
+            config: '{}',
+            created_at: '',
+          }
+        }
+      } catch { /* skip malformed JSON */ }
+    }
+    return undefined
   }
 
   // Find the highest-priority scene for a room in the current mode

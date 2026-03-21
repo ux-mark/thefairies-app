@@ -49,10 +49,12 @@ app.use('/api/motion', motionRoutes)
 // Hubitat webhook handler
 app.post('/hubitat', async (req, res) => {
   try {
-    const event = req.body
+    const raw = req.body
+    // Hubitat sends { content: { name, value, displayName, unit, descriptionText } }
+    const event = raw.content ?? raw
     console.log('Hubitat event:', JSON.stringify(event))
 
-    const displayName: string = event.displayName ?? 'unknown'
+    const displayName: string = event.displayName ?? event.displayname ?? 'unknown'
     const eventName: string = event.name ?? ''
     const eventValue: string = String(event.value ?? '')
 
