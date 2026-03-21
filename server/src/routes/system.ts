@@ -12,6 +12,7 @@ import { fairyDeviceClient } from '../lib/fairy-device-client.js'
 import { mtaClient } from '../lib/mta-client.js'
 import { MTA_STOPS, searchStops } from '../lib/mta-stops.js'
 import { weatherIndicator, WEATHER_COLORS } from '../lib/weather-indicator.js'
+import { motionHandler } from '../lib/motion-handler.js'
 
 const router = Router()
 
@@ -107,6 +108,20 @@ router.put('/mode', (req: Request, res: Response) => {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       [body.mode],
     )
+
+    // Check if this triggers wake unlock
+    const wakeModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+    )
+    const wakeMode = wakeModeRow?.value || 'Morning'
+    if (body.mode === wakeMode && motionHandler.getLockedRooms().length > 0) {
+      motionHandler.unlockAllRooms()
+      run(
+        "INSERT INTO logs (message, category, created_at) VALUES (?, 'system', datetime('now'))",
+        [`Wake mode reached (${body.mode}) — all rooms unlocked`],
+      )
+    }
+
     res.json({ mode: body.mode })
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -1000,7 +1015,7 @@ router.post('/all-off', async (_req: Request, res: Response) => {
   }
 })
 
-// POST /nighttime — Sleep Time mode + all off with bedroom exclusion
+// POST /nighttime — Sleep Time mode + all off with bedroom exclusion + room lockout
 router.post('/nighttime', async (_req: Request, res: Response) => {
   try {
     // Set mode to Sleep Time
@@ -1021,19 +1036,30 @@ router.post('/nighttime', async (_req: Request, res: Response) => {
 
     const actions = await runAllOff(excludeRooms)
 
+    // Lock rooms that were turned off (all rooms except excluded ones)
+    const allRoomNames = getAll<{ name: string }>('SELECT name FROM rooms').map(r => r.name)
+    const roomsToLock = allRoomNames.filter(r => !excludeRooms.includes(r))
+    motionHandler.lockRooms(roomsToLock)
+
+    // Get wake mode for response
+    const wakeModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+    )
+    const wakeMode = wakeModeRow?.value || 'Morning'
+
     run(
       "INSERT INTO logs (message, category, created_at) VALUES (?, 'system', datetime('now'))",
-      [`Nighttime executed: excluded rooms [${excludeRooms.join(', ')}], ${actions.length} actions`],
+      [`Nighttime executed: excluded rooms [${excludeRooms.join(', ')}], locked ${roomsToLock.length} rooms, wake mode: ${wakeMode}, ${actions.length} actions`],
     )
 
-    res.json({ success: true, mode: 'Sleep Time', excludeRooms, actions })
+    res.json({ success: true, mode: 'Sleep Time', excludeRooms, lockedRooms: roomsToLock, wakeMode, actions })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })
   }
 })
 
-// POST /guest-night — Sleep Time mode + all off with guest room exclusions
+// POST /guest-night — Sleep Time mode + all off with guest room exclusions + room lockout
 router.post('/guest-night', async (_req: Request, res: Response) => {
   try {
     // Set mode to Sleep Time
@@ -1062,12 +1088,56 @@ router.post('/guest-night', async (_req: Request, res: Response) => {
 
     const actions = await runAllOff(excludeRooms)
 
+    // Lock rooms that were turned off (all rooms except excluded ones)
+    const allRoomNames = getAll<{ name: string }>('SELECT name FROM rooms').map(r => r.name)
+    const roomsToLock = allRoomNames.filter(r => !excludeRooms.includes(r))
+    motionHandler.lockRooms(roomsToLock)
+
+    // Get wake mode for response
+    const wakeModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+    )
+    const wakeMode = wakeModeRow?.value || 'Morning'
+
     run(
       "INSERT INTO logs (message, category, created_at) VALUES (?, 'system', datetime('now'))",
-      [`Guest Night executed: excluded rooms [${excludeRooms.join(', ')}], ${actions.length} actions`],
+      [`Guest Night executed: excluded rooms [${excludeRooms.join(', ')}], locked ${roomsToLock.length} rooms, wake mode: ${wakeMode}, ${actions.length} actions`],
     )
 
-    res.json({ success: true, mode: 'Sleep Time', excludeRooms, actions })
+    res.json({ success: true, mode: 'Sleep Time', excludeRooms, lockedRooms: roomsToLock, wakeMode, actions })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// GET /night/status — current lockout status
+router.get('/night/status', (_req: Request, res: Response) => {
+  try {
+    const lockedRooms = motionHandler.getLockedRooms()
+    const wakeModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+    )
+    res.json({
+      active: lockedRooms.length > 0,
+      lockedRooms,
+      wakeMode: wakeModeRow?.value || 'Morning',
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /night/unlock — manually unlock all rooms (emergency override)
+router.post('/night/unlock', (_req: Request, res: Response) => {
+  try {
+    motionHandler.unlockAllRooms()
+    run(
+      "INSERT INTO logs (message, category, created_at) VALUES (?, 'system', datetime('now'))",
+      ['Manual night unlock: all rooms unlocked'],
+    )
+    res.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })

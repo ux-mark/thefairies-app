@@ -1,6 +1,7 @@
 import { getSunTimes, type SunTimes } from './sun-tracker.js'
-import { run } from '../db/index.js'
+import { getOne, run } from '../db/index.js'
 import type { Server as SocketServer } from 'socket.io'
+import { motionHandler } from './motion-handler.js'
 
 interface SunModeMapping {
   sunPhase: string
@@ -73,6 +74,20 @@ class SunModeScheduler {
         'INSERT INTO logs (message, category) VALUES (?, ?)',
         [`Auto mode transition: ${mode} (triggered by ${sunPhase})`, 'system'],
       )
+
+      // Check if this mode is the configured wake mode — unlock rooms if so
+      const wakeModeRow = getOne<{ value: string }>(
+        "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+      )
+      const wakeMode = wakeModeRow?.value || 'Morning'
+      if (mode === wakeMode && motionHandler.getLockedRooms().length > 0) {
+        motionHandler.unlockAllRooms()
+        run(
+          'INSERT INTO logs (message, category) VALUES (?, ?)',
+          [`Wake mode reached (${mode}) — all rooms unlocked`, 'system'],
+        )
+      }
+
       if (this.io) {
         this.io.emit('mode_changed', { mode, trigger: sunPhase, auto: true })
       }

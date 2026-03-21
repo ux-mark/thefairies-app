@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, ArrowDown, ArrowUp } from 'lucide-react'
+import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, ArrowDown, ArrowUp, Lock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
-import type { Room, Scene, MtaStatus, CombinedMtaStatus } from '@/lib/api'
+import type { Room, Scene, MtaStatus, CombinedMtaStatus, NightStatus } from '@/lib/api'
 import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
 
 // ── Skeleton loader ──────────────────────────────────────────────────────────
@@ -69,11 +69,13 @@ function RoomCard({
   scenes,
   currentMode,
   onActivateScene,
+  isLocked,
 }: {
   room: Room
   scenes: Scene[]
   currentMode: string
   onActivateScene: (name: string) => void
+  isLocked?: boolean
 }) {
   // Filter scenes: those that include this room AND match current mode
   const roomScenes = scenes.filter(s => {
@@ -104,15 +106,20 @@ function RoomCard({
             </span>
           )}
         </div>
-        <div
-          className={cn(
-            'rounded-full px-2 py-0.5 text-[10px] font-medium',
-            room.auto
-              ? 'bg-fairy-500/15 text-fairy-400'
-              : 'surface text-caption',
+        <div className="flex items-center gap-1.5">
+          {isLocked && (
+            <Lock className="h-3.5 w-3.5 text-indigo-400" aria-label="Room locked" />
           )}
-        >
-          {room.auto ? 'Auto' : 'Manual'}
+          <div
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-medium',
+              room.auto
+                ? 'bg-fairy-500/15 text-fairy-400'
+                : 'surface text-caption',
+            )}
+          >
+            {room.auto ? 'Auto' : 'Manual'}
+          </div>
         </div>
       </div>
 
@@ -261,6 +268,9 @@ function QuickActions() {
     },
     onError: () => toast({ message: 'Failed to set guest night', type: 'error' }),
   })
+
+  // Also invalidate night status from QuickActions context
+  // This is handled by the queryKey: ['system'] invalidation above
 
   const anyPending = allOffMutation.isPending || nighttimeMutation.isPending || guestNightMutation.isPending
 
@@ -478,6 +488,22 @@ export default function HomePage() {
     queryFn: api.system.getCurrent,
   })
 
+  const { data: nightStatus } = useQuery({
+    queryKey: ['system', 'night-status'],
+    queryFn: api.system.getNightStatus,
+    refetchInterval: 10_000,
+  })
+
+  const unlockMutation = useMutation({
+    mutationFn: api.system.unlockNight,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system', 'night-status'] })
+      queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      toast({ message: 'All rooms unlocked' })
+    },
+    onError: () => toast({ message: 'Failed to unlock rooms', type: 'error' }),
+  })
+
   const setModeMutation = useMutation({
     mutationFn: api.system.setMode,
     onSuccess: () => {
@@ -508,6 +534,27 @@ export default function HomePage() {
       <MtaCard />
 
       <QuickActions />
+
+      {nightStatus?.active && (
+        <div className="card mb-6 rounded-xl border border-indigo-500/30 bg-indigo-500/5 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Moon className="h-5 w-5 text-indigo-400 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-heading text-sm font-medium">Night mode active</p>
+              <p className="text-caption text-xs">
+                {nightStatus.lockedRooms.length} room{nightStatus.lockedRooms.length !== 1 ? 's' : ''} locked until {nightStatus.wakeMode}
+              </p>
+            </div>
+            <button
+              onClick={() => unlockMutation.mutate()}
+              disabled={unlockMutation.isPending}
+              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50"
+            >
+              Unlock
+            </button>
+          </div>
+        </div>
+      )}
 
       <WeatherCard />
 
@@ -547,6 +594,7 @@ export default function HomePage() {
                   onActivateScene={name =>
                     activateSceneMutation.mutate(name)
                   }
+                  isLocked={nightStatus?.lockedRooms.includes(room.name)}
                 />
               ))}
           </div>

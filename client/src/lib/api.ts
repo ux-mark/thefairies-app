@@ -229,6 +229,12 @@ export interface WeatherColorEntry {
   hex: string
 }
 
+export interface NightStatus {
+  active: boolean
+  lockedRooms: string[]
+  wakeMode: string
+}
+
 export interface CombinedMtaStatus {
   overallStatus: 'green' | 'orange' | 'red' | 'none'
   overallMessage: string
@@ -412,6 +418,8 @@ export const api = {
     allOff: () => fetchApi<{ success: boolean; actions: string[] }>('/system/all-off', { method: 'POST' }),
     nighttime: () => fetchApi<{ success: boolean; mode: string; excludeRooms: string[]; actions: string[] }>('/system/nighttime', { method: 'POST' }),
     guestNight: () => fetchApi<{ success: boolean; mode: string; excludeRooms: string[]; actions: string[] }>('/system/guest-night', { method: 'POST' }),
+    getNightStatus: () => fetchApi<NightStatus>('/system/night/status'),
+    unlockNight: () => fetchApi<{ success: boolean }>('/system/night/unlock', { method: 'POST' }),
     getMtaStatus: (station?: string, direction?: string, routes?: string) =>
       fetchApi<MtaStatus>(`/system/mta/status?station=${station || '120'}&direction=${direction || 'S'}${routes ? '&routes=' + routes : ''}`),
     getMtaArrivals: (station?: string, direction?: string, routes?: string) =>

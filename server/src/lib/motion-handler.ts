@@ -72,6 +72,33 @@ export class MotionHandler {
   private sensorStates: Map<string, 'active' | 'inactive'> = new Map()
   private indicatorRevertTimer: NodeJS.Timeout | null = null
   private indicatorPreviousState: { power: string; color: string; brightness: number } | null = null
+  private lockedRooms: Set<string> = new Set()
+
+  // Lock rooms — called by nighttime/guest-night endpoints
+  lockRooms(roomNames: string[]): void {
+    for (const name of roomNames) {
+      this.lockedRooms.add(name)
+      log(`Room locked: ${name}`)
+    }
+  }
+
+  // Unlock all rooms — called when wake mode is reached
+  unlockAllRooms(): void {
+    if (this.lockedRooms.size > 0) {
+      log(`Unlocking ${this.lockedRooms.size} rooms`)
+      this.lockedRooms.clear()
+    }
+  }
+
+  // Check if a room is locked
+  isRoomLocked(roomName: string): boolean {
+    return this.lockedRooms.has(roomName)
+  }
+
+  // Get all locked rooms (for API/UI)
+  getLockedRooms(): string[] {
+    return [...this.lockedRooms]
+  }
 
   // Find which room a sensor belongs to by its label
   // Checks both device_rooms table and rooms.sensors JSON column
@@ -194,6 +221,12 @@ export class MotionHandler {
         log(
           `Room ${roomName} lux ${room.lux} exceeds threshold ${luxThreshold}, skipping activation`,
         )
+        return
+      }
+
+      // Check room lockout BEFORE scene activation
+      if (this.isRoomLocked(roomName)) {
+        log(`Motion in ${roomName} but room is locked (night mode) — skipping scene activation`)
         return
       }
 
