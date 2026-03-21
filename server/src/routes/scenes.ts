@@ -47,7 +47,6 @@ function parseScene(row: SceneRow) {
 
 const commandSchema = z.object({
   type: z.enum([
-    'lifx_scene',
     'lifx_light',
     'all_off',
     'lifx_off',

@@ -15,12 +15,7 @@ interface LightCommand {
   duration?: number
 }
 
-interface SceneCommand {
-  type: 'lifx_scene'
-  scene_name?: string
-  name?: string  // legacy format uses 'name' instead of 'scene_name'
-  duration?: number
-}
+// lifx_scene type removed — all scenes migrated to per-light lifx_light commands
 
 interface AllOffCommand {
   type: 'all_off'
@@ -83,7 +78,6 @@ interface LifxEffectCommand {
 
 type Command =
   | LightCommand
-  | SceneCommand
   | AllOffCommand
   | LightOffCommand
   | HubitatDeviceCommand
@@ -168,21 +162,6 @@ export async function activateScene(sceneName: string): Promise<void> {
   for (const cmd of otherCommands) {
     try {
       switch (cmd.type) {
-        case 'lifx_scene': {
-          const lifxSceneName = cmd.scene_name || cmd.name || ''
-          const scenes = await lifxClient.listScenes()
-          const target = scenes.find(
-            (s: { name: string }) => s.name === lifxSceneName,
-          )
-          if (target) {
-            await lifxClient.activateScene(target.uuid, cmd.duration ?? 1)
-            log(`Activated LIFX scene: ${lifxSceneName}`)
-          } else {
-            log(`LIFX scene not found: ${lifxSceneName}`)
-          }
-          break
-        }
-
         case 'all_off': {
           await lifxClient.setState('all', {
             power: 'off',

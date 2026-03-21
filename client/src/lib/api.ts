@@ -94,7 +94,6 @@ export interface BatchState {
 
 export interface SceneCommand {
   type:
-    | 'lifx_scene'
     | 'lifx_light'
     | 'lifx_off'
     | 'hubitat_device'
