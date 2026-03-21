@@ -110,6 +110,7 @@ router.get('/:name', (req: Request, res: Response) => {
 // POST / — create room
 router.post('/', (req: Request, res: Response) => {
   try {
+    console.log('[rooms POST] body:', JSON.stringify(req.body))
     const body = createRoomSchema.parse(req.body)
     run(
       `INSERT INTO rooms (name, display_order, parent_room, auto, timer, sensors, tags)
@@ -128,10 +129,12 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json(parseRoom(created!))
   } catch (err) {
     if (err instanceof z.ZodError) {
+      console.error('[rooms POST] validation error:', JSON.stringify(err.errors))
       res.status(400).json({ error: 'Validation failed', details: err.errors })
       return
     }
     const msg = err instanceof Error ? err.message : String(err)
+    console.error('[rooms POST] error:', msg)
     res.status(500).json({ error: msg })
   }
 })
@@ -139,6 +142,7 @@ router.post('/', (req: Request, res: Response) => {
 // PUT /:name — update room
 router.put('/:name', (req: Request, res: Response) => {
   try {
+    console.log(`[rooms PUT /${req.params.name}] body:`, JSON.stringify(req.body))
     const existing = getOne<RoomRow>('SELECT * FROM rooms WHERE name = ?', [req.params.name])
     if (!existing) {
       res.status(404).json({ error: 'Room not found' })

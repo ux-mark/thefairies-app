@@ -23,7 +23,7 @@ const saveAssignmentsSchema = z.object({
       id: z.string(),
       label: z.string(),
       selector: z.string().optional(),
-      has_color: z.boolean().optional(),
+      has_color: z.union([z.boolean(), z.number()]).optional(), // Accept both bool and 0/1
       min_kelvin: z.number().optional(),
       max_kelvin: z.number().optional(),
     }),
@@ -58,6 +58,7 @@ router.get('/rooms/:roomName', (req: Request, res: Response) => {
 // POST /rooms — save assignments for a room (replace all)
 router.post('/rooms', (req: Request, res: Response) => {
   try {
+    console.log('[lights POST /rooms] body:', JSON.stringify(req.body))
     const body = saveAssignmentsSchema.parse(req.body)
 
     // Delete existing assignments for this room
