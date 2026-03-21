@@ -687,7 +687,9 @@ function SubwaySection() {
                 </div>
 
                 {/* Walk time stepper */}
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                <span className="text-caption text-[10px]">Walk</span>
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleWalkTimeChange(index, -1)}
                     disabled={stop.walkTime <= 1}
@@ -709,6 +711,7 @@ function SubwaySection() {
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
+                </div>
                 </div>
 
                 {/* Toggle + Delete */}
@@ -845,7 +848,8 @@ function SubwaySection() {
 
               {/* Walk time */}
               <div className="mb-4">
-                <p className="text-heading text-sm mb-2">Walk time</p>
+                <p className="text-heading text-sm mb-1">How long does it take you to walk there?</p>
+                <p className="text-caption text-xs mb-2">We'll use this to tell you when to leave</p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setAddWalkTime(w => Math.max(1, w - 1))}
@@ -903,8 +907,8 @@ function SubwaySection() {
       <div className="mt-4 surface rounded-lg border px-3 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-heading text-sm">Max wait threshold</p>
-            <p className="text-caption text-xs">If wait exceeds this, flag as a long wait</p>
+            <p className="text-heading text-sm">How long will you wait?</p>
+            <p className="text-caption text-xs">If the next train is further away than this, we'll let you know it's a long wait</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -934,7 +938,7 @@ function SubwaySection() {
 
       <div className="mt-3 flex items-center gap-2 text-xs text-caption">
         <Train className="h-3.5 w-3.5" />
-        Walk time determines when status changes colour
+        We'll tell you when to leave based on your walk time
       </div>
     </Section>
   )
