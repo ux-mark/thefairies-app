@@ -1085,8 +1085,10 @@ function IndicatorSection() {
               className="input-field h-11 w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm focus:border-fairy-500 focus:outline-none"
             >
               <option value="">Select a sensor</option>
-              {allSensors.map(sensor => (
-                <option key={sensor.name} value={sensor.name}>
+              {allSensors
+                .filter((s, i, arr) => arr.findIndex(x => x.name === s.name) === i)
+                .map(sensor => (
+                <option key={`${sensor.name}-${sensor.room}`} value={sensor.name}>
                   {sensor.name} ({sensor.room})
                 </option>
               ))}
