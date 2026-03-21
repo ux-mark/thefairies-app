@@ -208,7 +208,7 @@ function LightEditorCard({
 
           <ColorBrightnessPicker
             hasColor={state.hasColor}
-            color={{ h: state.hue, s: state.saturation, v: 100 }}
+            color={{ h: state.hue, s: state.saturation, v: state.brightness }}
             kelvin={state.kelvin}
             brightness={state.brightness}
             minKelvin={state.minKelvin}
@@ -603,7 +603,7 @@ export default function SceneEditorPage() {
             lightId: cmd.light_id,
             selector: cmd.selector ?? `id:${cmd.light_id}`,
             label: cmd.name,
-            hasColor: assignment?.has_color ?? true,
+            hasColor: assignment ? Boolean(assignment.has_color) : true,
             minKelvin: assignment?.min_kelvin ?? 2500,
             maxKelvin: assignment?.max_kelvin ?? 9000,
             power: cmd.power ?? 'on',
@@ -646,7 +646,7 @@ export default function SceneEditorPage() {
               lightId: rl.light_id,
               selector: rl.light_selector || `id:${rl.light_id}`,
               label: rl.light_label,
-              hasColor: rl.has_color,
+              hasColor: Boolean(rl.has_color),
               minKelvin: rl.min_kelvin,
               maxKelvin: rl.max_kelvin,
               power: live?.power ?? 'on',

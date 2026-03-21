@@ -295,7 +295,7 @@ export default function RoomDetailPage() {
       room?.lights.map(l => ({
         id: l.light_id,
         label: l.light_label,
-        has_color: l.has_color,
+        has_color: Boolean(l.has_color),
         min_kelvin: l.min_kelvin,
         max_kelvin: l.max_kelvin,
       })) ?? []
