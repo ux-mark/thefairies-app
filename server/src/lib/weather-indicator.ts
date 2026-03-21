@@ -12,41 +12,41 @@ import { getOne, run } from '../db/index.js'
  * https://openweathermap.org/weather-conditions
  */
 export const WEATHER_COLORS: Record<string, { color: string; name: string; hex: string; description: string }> = {
-  // Clear sky (800) — teal/cyan (user's original choice from LIFX scenes)
-  clear: { color: 'hue:175 saturation:0.7 brightness:0.9', name: 'Clear / Sunny', hex: '#2dd4bf', description: 'Clear sky' },
+  // Clear sky (800) — teal/cyan (user's original LIFX scene colour)
+  clear: { color: 'hue:175 saturation:0.7 brightness:0.9', name: 'Clear / Sunny', hex: '#45e6d8', description: 'Clear sky' },
 
-  // Few/scattered clouds (801-802) — olive/dark warm yellow (user's original)
-  few_clouds: { color: 'hue:50 saturation:0.6 brightness:0.7', name: 'Some Clouds', hex: '#a3a23a', description: '11-50% cloud cover' },
+  // Few/scattered clouds (801-802) — olive/warm yellow (user's original)
+  few_clouds: { color: 'hue:50 saturation:0.6 brightness:0.7', name: 'Some Clouds', hex: '#b3a147', description: '11-50% cloud cover' },
 
-  // Broken/overcast clouds (803-804) — cool steel blue (NOT grey — grey is no brightness on a light)
-  overcast: { color: 'hue:210 saturation:0.45 brightness:0.65', name: 'Very Cloudy', hex: '#5c80a8', description: '51-100% cloud cover' },
+  // Broken/overcast clouds (803-804) — cool steel blue (NOT grey)
+  overcast: { color: 'hue:210 saturation:0.45 brightness:0.65', name: 'Very Cloudy', hex: '#5b80a6', description: '51-100% cloud cover' },
 
   // Drizzle (3xx) — teal (user's original)
-  drizzle: { color: 'hue:190 saturation:0.6 brightness:0.85', name: 'Drizzle', hex: '#22b8cf', description: 'Light drizzle or shower' },
+  drizzle: { color: 'hue:190 saturation:0.6 brightness:0.85', name: 'Drizzle', hex: '#57c3d9', description: 'Light drizzle or shower' },
 
-  // Rain (5xx light-moderate) — blue (user's original)
-  rain: { color: 'hue:225 saturation:1.0 brightness:0.9', name: 'Rain', hex: '#2563eb', description: 'Light to moderate rain' },
+  // Rain (5xx light-moderate) — vivid blue (user's original)
+  rain: { color: 'hue:225 saturation:0.9 brightness:0.9', name: 'Rain', hex: '#1745e6', description: 'Light to moderate rain' },
 
-  // Heavy rain (502-504, 522) — deep saturated blue
-  heavy_rain: { color: 'hue:230 saturation:1.0 brightness:0.6', name: 'Heavy Rain', hex: '#1e3a8a', description: 'Heavy or extreme rain' },
+  // Heavy rain (502-504, 522) — deep blue (brighter than before)
+  heavy_rain: { color: 'hue:230 saturation:0.9 brightness:0.7', name: 'Heavy Rain', hex: '#1230b3', description: 'Heavy or extreme rain' },
 
   // Freezing rain (511) — ice blue
-  freezing_rain: { color: 'hue:195 saturation:0.7 brightness:0.9', name: 'Freezing Rain', hex: '#38bdf8', description: 'Freezing rain or sleet' },
+  freezing_rain: { color: 'hue:195 saturation:0.7 brightness:0.9', name: 'Freezing Rain', hex: '#45bde6', description: 'Freezing rain or sleet' },
 
   // Thunderstorm (2xx) — vivid purple (user's original)
-  thunderstorm: { color: 'hue:280 saturation:0.85 brightness:0.8', name: 'Thunderstorm', hex: '#7c3aed', description: 'Thunderstorms, possibly with rain' },
+  thunderstorm: { color: 'hue:275 saturation:0.8 brightness:0.8', name: 'Thunderstorm', hex: '#7033cc', description: 'Thunderstorms, possibly with rain' },
 
-  // Snow (6xx) — bright teal-green (user's original was green/teal)
-  snow: { color: 'hue:160 saturation:0.6 brightness:0.85', name: 'Snow', hex: '#34d399', description: 'Snow, sleet, or shower snow' },
+  // Snow (6xx) — teal-green (user's original)
+  snow: { color: 'hue:160 saturation:0.6 brightness:0.85', name: 'Snow', hex: '#57d9ad', description: 'Snow, sleet, or shower snow' },
 
   // Mist / Fog (701, 741) — soft lavender/mauve (user's Atmosphere colour)
-  mist: { color: 'hue:280 saturation:0.25 brightness:0.75', name: 'Mist / Fog', hex: '#a78bfa', description: 'Mist, fog, or haze' },
+  mist: { color: 'hue:280 saturation:0.25 brightness:0.75', name: 'Mist / Fog', hex: '#af8fbf', description: 'Mist, fog, or haze' },
 
   // Haze / Smoke / Dust (711, 721, 731, 751, 761) — warm muted amber
-  haze: { color: 'hue:30 saturation:0.6 brightness:0.7', name: 'Haze / Smoke', hex: '#b47a30', description: 'Haze, smoke, dust, or sand' },
+  haze: { color: 'hue:30 saturation:0.6 brightness:0.7', name: 'Haze / Smoke', hex: '#b37d47', description: 'Haze, smoke, dust, or sand' },
 
   // Squall / Tornado (771, 781) — intense red-orange (urgent/danger)
-  severe: { color: 'hue:10 saturation:1.0 brightness:1.0', name: 'Severe Weather', hex: '#ef4444', description: 'Squalls, tornado, or volcanic ash' },
+  severe: { color: 'hue:5 saturation:1.0 brightness:1.0', name: 'Severe Weather', hex: '#ff1500', description: 'Squalls, tornado, or volcanic ash' },
 }
 
 /**
