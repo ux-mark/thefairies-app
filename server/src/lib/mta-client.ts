@@ -100,24 +100,18 @@ export const mtaClient = {
 
   /**
    * Walk-time-aware status check.
-   * Status is based on whether you can make the next train given your walk time:
-   * - green: buffer >= 3 min (comfortable — leave soon)
-   * - orange: buffer 1-2 min (tight — leave now)
-   * - red: buffer < 1 min (you'll miss it)
-   * - none: no upcoming trains
-   */
-  /**
-   * Walk-time-aware status check.
    *
    * Logic:
-   * - GREEN: buffer >= 3 min → "Leave soon"
-   * - ORANGE: buffer 1-2 min → "Leave now!"
-   * - RED: buffer < 1 min → missed this train
-   *   - If next catchable train is within maxWaitMinutes: "Wait X min, then leave"
-   *   - If next catchable train is beyond maxWaitMinutes: "Long wait — next in X min"
+   * - GREEN: buffer >= 3 min (comfortable, leave soon)
+   * - ORANGE: buffer 1-2 min (tight, leave now)
+   * - When the first train is missed (buffer < 1), find the best catchable train
+   *   where platform wait <= maxWaitMinutes, and re-evaluate the status:
+   *   - Catchable with buffer >= 3 -> GREEN
+   *   - Catchable with buffer 1-2 -> ORANGE
+   *   - No catchable within tolerance -> RED
    * - NONE: no upcoming trains
    *
-   * @param maxWaitMinutes - if the wait for a catchable train exceeds this, flag it (default 6)
+   * @param maxWaitMinutes - max time the user is willing to wait on the platform (default 6)
    */
   async getStatus(
     stationId: string = '120',
@@ -168,26 +162,38 @@ export const mtaClient = {
       leaveInMinutes = 0
       message = `Leave now! \u2014 ${routeLabel} train in ${next.minutesAway} min (${walkTimeMinutes} min walk \u2014 tight!)`
     } else {
-      // Missed this train — find the next catchable one
-      status = 'red'
-
-      // Find first train we can actually catch
-      const catchable = arrivals.find(a => a.minutesAway - walkTimeMinutes >= 1)
+      // Missed this train — find the best catchable one within platform wait tolerance
+      // A train is "catchable" if buffer >= 1 (we arrive before it departs)
+      // and we wouldn't wait on the platform longer than maxWaitMinutes
+      const catchable = arrivals.find(a => {
+        const b = a.minutesAway - walkTimeMinutes
+        if (b < 1) return false // can't catch it
+        return b <= maxWaitMinutes // platform wait within tolerance
+      })
 
       if (catchable) {
         catchableTrain = catchable
-        leaveInMinutes = Math.max(0, catchable.minutesAway - walkTimeMinutes - 2)
-        const waitMinutes = catchable.minutesAway - next.minutesAway
+        const catchableBuffer = catchable.minutesAway - walkTimeMinutes
+        leaveInMinutes = Math.max(0, catchableBuffer - 2)
 
-        if (leaveInMinutes <= maxWaitMinutes) {
-          // Short wait — tell user to wait then leave
-          message = `Wait ${leaveInMinutes > 0 ? leaveInMinutes + ' min, then leave' : 'and leave now'} \u2014 ${catchable.routeId} train in ${catchable.minutesAway} min`
+        // Re-evaluate status based on the catchable train's buffer
+        if (catchableBuffer >= 3) {
+          status = 'green'
+          message = `Next ${catchable.routeId} train in ${catchable.minutesAway} min \u2014 leave in ${leaveInMinutes} min (${catchableBuffer} min wait at station)`
         } else {
-          // Long wait
-          message = `Long wait \u2014 next catchable ${catchable.routeId} train in ${catchable.minutesAway} min (leave in ${leaveInMinutes} min)`
+          status = 'orange'
+          message = `Leave now! \u2014 ${catchable.routeId} train in ${catchable.minutesAway} min (${catchableBuffer} min wait at station)`
         }
       } else {
-        message = `No catchable trains right now (next ${routeLabel} in ${next.minutesAway} min, need ${walkTimeMinutes} min walk)`
+        // No catchable train within platform wait tolerance
+        status = 'red'
+        const anyCatchable = arrivals.find(a => a.minutesAway - walkTimeMinutes >= 1)
+        if (anyCatchable) {
+          const platformWait = anyCatchable.minutesAway - walkTimeMinutes
+          message = `Long wait \u2014 next ${anyCatchable.routeId} train in ${anyCatchable.minutesAway} min (${platformWait} min at station exceeds your ${maxWaitMinutes} min limit)`
+        } else {
+          message = `No catchable trains right now (next ${routeLabel} in ${next.minutesAway} min, need ${walkTimeMinutes} min walk)`
+        }
       }
     }
 

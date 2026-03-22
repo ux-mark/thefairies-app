@@ -212,7 +212,6 @@ export interface MtaIndicatorConfig {
   lightId: string
   lightLabel: string
   sensorName: string
-  duration: number
 }
 
 export interface WeatherIndicatorConfig {
@@ -451,7 +450,7 @@ export const api = {
     saveMtaIndicator: (config: MtaIndicatorConfig) =>
       fetchApi<MtaIndicatorConfig>('/system/mta/indicator', { method: 'PUT', body: JSON.stringify(config) }),
     testMtaIndicator: () =>
-      fetchApi<{ status: string; color: string; duration: number }>('/system/mta/indicator/test', { method: 'POST' }),
+      fetchApi<{ status: string; color: string; windowMinutes: number }>('/system/mta/indicator/test', { method: 'POST' }),
     getWeatherIndicator: () =>
       fetchApi<WeatherIndicatorConfig>('/system/weather/indicator'),
     saveWeatherIndicator: (config: WeatherIndicatorConfig) =>

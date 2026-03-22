@@ -11,6 +11,7 @@ import { twinklyClient } from '../lib/twinkly-client.js'
 import { fairyDeviceClient } from '../lib/fairy-device-client.js'
 import { mtaClient } from '../lib/mta-client.js'
 import { MTA_STOPS, searchStops } from '../lib/mta-stops.js'
+import { mtaIndicator } from '../lib/mta-indicator.js'
 import { weatherIndicator, WEATHER_COLORS } from '../lib/weather-indicator.js'
 import { motionHandler } from '../lib/motion-handler.js'
 
@@ -521,7 +522,7 @@ router.get('/mta/combined-status', async (_req: Request, res: Response) => {
         overallMessage = 'Leave now!'
         break
       case 'red':
-        overallMessage = "You'll miss the next one"
+        overallMessage = 'No good trains soon'
         break
       default:
         overallMessage = 'No upcoming trains'
@@ -570,110 +571,11 @@ router.put('/mta/indicator', (req: Request, res: Response) => {
 // POST /mta/indicator/test — trigger the indicator manually (for testing)
 router.post('/mta/indicator/test', async (_req: Request, res: Response) => {
   try {
-    const row = getOne<CurrentStateRow>("SELECT * FROM current_state WHERE key = 'pref_mta_indicator'")
-    let config = { enabled: false, lightId: '', lightLabel: '', sensorName: '', duration: 30 }
-    try { config = row?.value ? JSON.parse(row.value) : config } catch { /* keep default */ }
-
-    if (!config.lightId) {
-      res.status(400).json({ error: 'No indicator light configured' })
-      return
-    }
-
-    // Get configured stops
-    const stopsRow = getOne<CurrentStateRow>("SELECT * FROM current_state WHERE key = 'pref_mta_stops'")
-    let stops: Array<{
-      stopId: string; name: string; direction: string; routes: string[];
-      feedGroup: string; walkTime: number; enabled: boolean
-    }> = []
-    try { stops = stopsRow?.value ? JSON.parse(stopsRow.value) : [] } catch { stops = [] }
-
-    const enabledStops = stops.filter(s => s.enabled)
-    if (enabledStops.length === 0) {
-      res.status(400).json({ error: 'No subway stops configured' })
-      return
-    }
-
-    // Get max wait threshold
-    const maxWaitRow = getOne<CurrentStateRow>("SELECT * FROM current_state WHERE key = 'pref_mta_max_wait'")
-    const maxWaitMinutes = maxWaitRow?.value ? Number(maxWaitRow.value) : 6
-
-    // Find best status across all stops
-    const statusPriority: Record<string, number> = { green: 3, orange: 2, red: 1, none: 0 }
-    let bestStatus = 'none'
-
-    for (const stop of enabledStops) {
-      try {
-        const result = await mtaClient.getStatus(stop.stopId, stop.direction, stop.routes, stop.feedGroup, stop.walkTime, maxWaitMinutes)
-        if (statusPriority[result.status] > statusPriority[bestStatus]) {
-          bestStatus = result.status
-        }
-      } catch { /* skip failed stop */ }
-    }
-
-    // Set the indicator light
-    const statusColors: Record<string, string> = {
-      green: '#22c55e',
-      orange: '#f97316',
-      red: '#ef4444',
-      none: '#6b7280',
-    }
-
-    const color = statusColors[bestStatus] || statusColors.red
-    const selector = `id:${config.lightId}`
-
-    // Save current state for revert
-    const lights = await lifxClient.listBySelector(selector)
-    let previousState: { power: string; color: string; brightness: number } | null = null
-    if (lights.length > 0) {
-      const light = lights[0]
-      previousState = {
-        power: light.power,
-        color: `hue:${light.color.hue} saturation:${light.color.saturation} kelvin:${light.color.kelvin}`,
-        brightness: light.brightness,
-      }
-    }
-
-    // Set the light
-    await lifxClient.setState(selector, {
-      power: 'on',
-      color: color,
-      brightness: 1,
-      duration: 0.5,
-    })
-
-    // For orange/red, add a breathe effect for urgency
-    if (bestStatus === 'orange' || bestStatus === 'red') {
-      await lifxClient.breathe(selector, {
-        color: color,
-        period: bestStatus === 'red' ? 1 : 2,
-        cycles: bestStatus === 'red' ? 10 : 5,
-        persist: false,
-        power_on: true,
-      })
-    }
-
-    // Schedule revert after duration
-    setTimeout(async () => {
-      try {
-        if (previousState) {
-          if (previousState.power === 'off') {
-            await lifxClient.setState(selector, { power: 'off', duration: 1 })
-          } else {
-            await lifxClient.setState(selector, {
-              power: 'on',
-              color: previousState.color,
-              brightness: previousState.brightness,
-              duration: 1,
-            })
-          }
-        }
-      } catch { /* best effort revert */ }
-    }, config.duration * 1000)
-
-    res.json({ status: bestStatus, color, duration: config.duration })
+    const result = await mtaIndicator.trigger()
+    res.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    res.status(500).json({ error: msg })
+    res.status(400).json({ error: msg })
   }
 })
 
