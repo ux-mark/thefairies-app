@@ -31,7 +31,7 @@ initDb()
 const app = express()
 
 app.use(cors({ origin: CORS_ORIGIN }))
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 
 const httpServer = createServer(app)
 const io = new SocketServer(httpServer, {
