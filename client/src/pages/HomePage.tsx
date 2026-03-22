@@ -69,12 +69,14 @@ function RoomCard({
   scenes,
   currentMode,
   onToggleScene,
+  onToggleAuto,
   isLocked,
 }: {
   room: Room
   scenes: Scene[]
   currentMode: string
   onToggleScene: (name: string, isActive: boolean) => void
+  onToggleAuto: () => void
   isLocked?: boolean
 }) {
   // Filter scenes: auto-activate only, match room + mode, in season
@@ -107,26 +109,24 @@ function RoomCard({
           <h3 className="text-heading text-base font-semibold">
             {room.name}
           </h3>
-          {!room.current_scene && (
-            <span className="text-caption mt-1 inline-block text-xs">
-              No active scene
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1.5">
           {isLocked && (
             <Lock className="h-3.5 w-3.5 text-indigo-400" aria-label="Room locked" />
           )}
-          <div
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleAuto() }}
+            aria-label={`Switch to ${room.auto ? 'manual' : 'auto'} mode`}
             className={cn(
-              'rounded-full px-2 py-0.5 text-[10px] font-medium',
+              'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
               room.auto
-                ? 'bg-fairy-500/15 text-fairy-400'
-                : 'surface text-caption',
+                ? 'bg-fairy-500/15 text-fairy-400 hover:bg-fairy-500/25'
+                : 'surface text-caption hover:brightness-95 dark:hover:brightness-110',
             )}
           >
             {room.auto ? 'Auto' : 'Manual'}
-          </div>
+          </button>
         </div>
       </div>
 
@@ -578,6 +578,27 @@ export default function HomePage() {
     },
   })
 
+  const toggleAutoMutation = useMutation({
+    mutationFn: ({ name, auto }: { name: string; auto: boolean }) =>
+      api.rooms.update(name, { auto }),
+    onMutate: async ({ name, auto }) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room => room.name === name ? { ...room, auto } : room)
+      )
+      return { previous }
+    },
+    onSuccess: (_data, { auto }) => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      toast({ message: auto ? 'Automation enabled' : 'Automation disabled' })
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to update room', type: 'error' })
+    },
+  })
+
   const currentMode = system?.mode ?? 'Evening'
   const allModes = system?.all_modes ?? [...DEFAULT_MODES]
 
@@ -649,6 +670,9 @@ export default function HomePage() {
                     isActive
                       ? deactivateSceneMutation.mutate(name)
                       : activateSceneMutation.mutate(name)
+                  }
+                  onToggleAuto={() =>
+                    toggleAutoMutation.mutate({ name: room.name, auto: !room.auto })
                   }
                   isLocked={nightStatus?.lockedRooms.includes(room.name)}
                 />
