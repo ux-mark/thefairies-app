@@ -531,24 +531,56 @@ export default function HomePage() {
 
   const activateSceneMutation = useMutation({
     mutationFn: api.scenes.activate,
+    onMutate: async (sceneName) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      const scene = scenes?.find(s => s.name === sceneName)
+      const sceneRoomNames = scene?.rooms?.map(r => r.name) ?? []
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room =>
+          sceneRoomNames.includes(room.name)
+            ? { ...room, current_scene: sceneName }
+            : room
+        )
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['scenes'] })
       toast({ message: 'Scene activated' })
     },
-    onError: () =>
-      toast({ message: 'Failed to activate scene', type: 'error' }),
+    onError: (_err, _name, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to activate scene', type: 'error' })
+    },
   })
 
   const deactivateSceneMutation = useMutation({
     mutationFn: api.scenes.deactivate,
+    onMutate: async (sceneName) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      const scene = scenes?.find(s => s.name === sceneName)
+      const sceneRoomNames = scene?.rooms?.map(r => r.name) ?? []
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room =>
+          sceneRoomNames.includes(room.name) && room.current_scene === sceneName
+            ? { ...room, current_scene: null }
+            : room
+        )
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['scenes'] })
       toast({ message: 'Scene deactivated' })
     },
-    onError: () =>
-      toast({ message: 'Failed to deactivate scene', type: 'error' }),
+    onError: (_err, _name, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to deactivate scene', type: 'error' })
+    },
   })
 
   const currentMode = system?.mode ?? 'Evening'
