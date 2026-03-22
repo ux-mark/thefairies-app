@@ -578,16 +578,23 @@ export default function RoomDetailPage() {
     return [...base, ...pending]
   }, [apiDevicesForRoom, pendingDeviceAssigns, pendingDeviceUnassigns, pendingDeviceConfigs, name])
 
+  // Filter to only device types that belong in the Switches tab (not sensors)
+  const DEVICE_TYPES = [...SWITCH_TYPES, ...OTHER_TYPES]
+  const filteredDeviceAssignments = useMemo(
+    () => effectiveDeviceAssignments.filter(d => DEVICE_TYPES.includes(d.device_type)),
+    [effectiveDeviceAssignments],
+  )
+
   // Assigned switches/dimmers
   const assignedSwitches = useMemo(
-    () => effectiveDeviceAssignments.filter(d => SWITCH_TYPES.includes(d.device_type)),
-    [effectiveDeviceAssignments],
+    () => filteredDeviceAssignments.filter(d => SWITCH_TYPES.includes(d.device_type)),
+    [filteredDeviceAssignments],
   )
 
   // Assigned other devices (twinkly/fairy)
   const assignedOtherDevices = useMemo(
-    () => effectiveDeviceAssignments.filter(d => OTHER_TYPES.includes(d.device_type)),
-    [effectiveDeviceAssignments],
+    () => filteredDeviceAssignments.filter(d => OTHER_TYPES.includes(d.device_type)),
+    [filteredDeviceAssignments],
   )
 
   // All device IDs already assigned to ANY room
@@ -615,10 +622,10 @@ export default function RoomDetailPage() {
 
   // Filter assigned devices by search
   const filteredAssignedDevices = useMemo(() => {
-    if (!deviceSearch.trim()) return effectiveDeviceAssignments
+    if (!deviceSearch.trim()) return filteredDeviceAssignments
     const q = deviceSearch.toLowerCase()
-    return effectiveDeviceAssignments.filter(d => d.device_label.toLowerCase().includes(q))
-  }, [effectiveDeviceAssignments, deviceSearch])
+    return filteredDeviceAssignments.filter(d => d.device_label.toLowerCase().includes(q))
+  }, [filteredDeviceAssignments, deviceSearch])
 
   // Filter available devices by search (group-aware)
   const filteredAvailableDevicesByType = useMemo(() => {
@@ -825,7 +832,7 @@ export default function RoomDetailPage() {
   }
 
   const handleRemoveAllDevices = () => {
-    if (!window.confirm(`Remove all ${effectiveDeviceAssignments.length} devices from this room?`)) return
+    if (!window.confirm(`Remove all ${filteredDeviceAssignments.length} devices from this room?`)) return
     // Unassign API devices
     for (const d of apiDevicesForRoom) {
       if (!pendingDeviceUnassigns.includes(d.device_id)) {
@@ -1080,12 +1087,12 @@ export default function RoomDetailPage() {
             >
               <ToggleLeft className="h-4 w-4" />
               Switches
-              {effectiveDeviceAssignments.length > 0 && (
+              {filteredDeviceAssignments.length > 0 && (
                 <span className={cn(
                   'rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none',
                   activeTab === 'switches' ? 'bg-white/20' : 'bg-fairy-500/15 text-fairy-400',
                 )}>
-                  {effectiveDeviceAssignments.length}
+                  {filteredDeviceAssignments.length}
                 </span>
               )}
             </Tabs.Trigger>
@@ -1318,13 +1325,13 @@ export default function RoomDetailPage() {
               <div className="mb-3 flex items-center justify-between">
                 <h4 className="text-sm font-medium text-body">
                   Assigned to this room
-                  {effectiveDeviceAssignments.length > 0 && (
+                  {filteredDeviceAssignments.length > 0 && (
                     <span className="ml-1.5 text-caption">
-                      ({effectiveDeviceAssignments.length})
+                      ({filteredDeviceAssignments.length})
                     </span>
                   )}
                 </h4>
-                {effectiveDeviceAssignments.length > 1 && (
+                {filteredDeviceAssignments.length > 1 && (
                   <button
                     type="button"
                     onClick={handleRemoveAllDevices}
@@ -1346,7 +1353,7 @@ export default function RoomDetailPage() {
                     />
                   ))}
                 </div>
-              ) : effectiveDeviceAssignments.length > 0 && deviceSearch.trim() ? (
+              ) : filteredDeviceAssignments.length > 0 && deviceSearch.trim() ? (
                 <p className="rounded-xl border border-dashed border-[var(--border-secondary)] py-6 text-center text-xs text-caption">
                   No assigned devices match &ldquo;{deviceSearch}&rdquo;.
                 </p>
