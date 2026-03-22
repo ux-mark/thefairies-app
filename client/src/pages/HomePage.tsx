@@ -68,13 +68,13 @@ function RoomCard({
   room,
   scenes,
   currentMode,
-  onActivateScene,
+  onToggleScene,
   isLocked,
 }: {
   room: Room
   scenes: Scene[]
   currentMode: string
-  onActivateScene: (name: string) => void
+  onToggleScene: (name: string, isActive: boolean) => void
   isLocked?: boolean
 }) {
   // Filter scenes: auto-activate only, match room + mode, in season
@@ -162,22 +162,26 @@ function RoomCard({
       {/* Quick scene buttons */}
       {displayScenes.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {displayScenes.map(scene => (
-            <button
-              key={scene.name}
-              onClick={() => onActivateScene(scene.name)}
-              className={cn(
-                'flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                room.current_scene === scene.name
-                  ? 'bg-fairy-500/20 text-fairy-300'
-                  : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
-              )}
-            >
-              {scene.icon && <span className="text-sm">{scene.icon}</span>}
-              {scene.name}
-            </button>
-          ))}
+          {displayScenes.map(scene => {
+            const isActive = room.current_scene === scene.name
+            return (
+              <button
+                key={scene.name}
+                onClick={() => onToggleScene(scene.name, isActive)}
+                aria-pressed={isActive}
+                className={cn(
+                  'flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                  isActive
+                    ? 'bg-fairy-500/20 text-fairy-700 dark:text-fairy-300'
+                    : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
+                )}
+              >
+                {scene.icon && <span className="text-sm">{scene.icon}</span>}
+                {scene.name}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -527,13 +531,56 @@ export default function HomePage() {
 
   const activateSceneMutation = useMutation({
     mutationFn: api.scenes.activate,
+    onMutate: async (sceneName) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      const scene = scenes?.find(s => s.name === sceneName)
+      const sceneRoomNames = scene?.rooms?.map(r => r.name) ?? []
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room =>
+          sceneRoomNames.includes(room.name)
+            ? { ...room, current_scene: sceneName }
+            : room
+        )
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['scenes'] })
       toast({ message: 'Scene activated' })
     },
-    onError: () =>
-      toast({ message: 'Failed to activate scene', type: 'error' }),
+    onError: (_err, _name, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to activate scene', type: 'error' })
+    },
+  })
+
+  const deactivateSceneMutation = useMutation({
+    mutationFn: api.scenes.deactivate,
+    onMutate: async (sceneName) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      const scene = scenes?.find(s => s.name === sceneName)
+      const sceneRoomNames = scene?.rooms?.map(r => r.name) ?? []
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room =>
+          sceneRoomNames.includes(room.name) && room.current_scene === sceneName
+            ? { ...room, current_scene: null }
+            : room
+        )
+      )
+      return { previous }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      queryClient.invalidateQueries({ queryKey: ['scenes'] })
+      toast({ message: 'Scene deactivated' })
+    },
+    onError: (_err, _name, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to deactivate scene', type: 'error' })
+    },
   })
 
   const currentMode = system?.mode ?? 'Evening'
@@ -603,8 +650,10 @@ export default function HomePage() {
                   room={room}
                   scenes={scenes ?? []}
                   currentMode={currentMode}
-                  onActivateScene={name =>
-                    activateSceneMutation.mutate(name)
+                  onToggleScene={(name, isActive) =>
+                    isActive
+                      ? deactivateSceneMutation.mutate(name)
+                      : activateSceneMutation.mutate(name)
                   }
                   isLocked={nightStatus?.lockedRooms.includes(room.name)}
                 />
