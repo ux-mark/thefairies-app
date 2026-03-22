@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom'
 import {
   Plus,
   ChevronRight,
-  Lightbulb,
   Sparkles,
   DoorOpen,
 } from 'lucide-react'
@@ -40,6 +39,11 @@ export default function RoomsPage() {
     queryFn: api.lights.getRoomAssignments,
   })
 
+  const { data: deviceAssignments } = useQuery({
+    queryKey: ['hubitat', 'device-rooms'],
+    queryFn: api.hubitat.getDeviceRooms,
+  })
+
   const createMutation = useMutation({
     mutationFn: (name: string) =>
       api.rooms.create({ name, display_order: (rooms?.length ?? 0) + 1, auto: false, timer: 0, sensors: [], tags: [] }),
@@ -54,6 +58,12 @@ export default function RoomsPage() {
 
   const lightsPerRoom = (name: string) =>
     assignments?.filter(a => a.room_name === name).length ?? 0
+
+  const devicesPerRoom = (name: string) =>
+    deviceAssignments?.filter(a => a.room_name === name).length ?? 0
+
+  const sensorsPerRoom = (name: string) =>
+    rooms?.find(r => r.name === name)?.sensors?.length ?? 0
 
   return (
     <div>
@@ -134,11 +144,9 @@ export default function RoomsPage() {
                     {room.name}
                   </h3>
                   <div className="text-body mt-1 flex flex-wrap items-center gap-3 text-xs">
-                    <span className="flex items-center gap-1">
-                      <Lightbulb className="h-3 w-3" />
-                      {lightsPerRoom(room.name)} light
-                      {lightsPerRoom(room.name) !== 1 ? 's' : ''}
-                    </span>
+                    <span>{lightsPerRoom(room.name)} {lightsPerRoom(room.name) === 1 ? 'light' : 'lights'}</span>
+                    <span>{devicesPerRoom(room.name)} {devicesPerRoom(room.name) === 1 ? 'device' : 'devices'}</span>
+                    <span>{sensorsPerRoom(room.name)} {sensorsPerRoom(room.name) === 1 ? 'sensor' : 'sensors'}</span>
                     {room.current_scene && (
                       <span className="flex items-center gap-1 text-fairy-400">
                         <Sparkles className="h-3 w-3" />
