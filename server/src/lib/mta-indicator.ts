@@ -29,12 +29,6 @@ interface MtaIndicatorConfig {
   sensorName: string
 }
 
-interface LightPreviousState {
-  power: string
-  color: string
-  brightness: number
-}
-
 const STATUS_COLORS: Record<string, string> = {
   green: '#22c55e',
   orange: '#f97316',
@@ -57,7 +51,6 @@ function log(message: string): void {
 class MtaIndicatorManager {
   private updateTimer: NodeJS.Timeout | null = null
   private windowTimer: NodeJS.Timeout | null = null
-  private previousState: LightPreviousState | null = null
   private isActive = false
   private currentLightId: string | null = null
 
@@ -77,12 +70,9 @@ class MtaIndicatorManager {
       throw new Error('No subway stops configured')
     }
 
-    // Cancel existing cycle if running, but preserve original previous state
+    // Cancel existing cycle if running
     if (this.isActive) {
       this.clearTimers()
-    } else {
-      // Only save previous state at the start of a fresh cycle
-      await this.savePreviousState(config.lightId)
     }
 
     this.isActive = true
@@ -172,7 +162,7 @@ class MtaIndicatorManager {
   }
 
   /**
-   * Stop the update cycle and revert the light to its previous state.
+   * Stop the update cycle and turn the light off.
    */
   stop(): void {
     if (!this.isActive) return
@@ -180,31 +170,20 @@ class MtaIndicatorManager {
     this.clearTimers()
     this.isActive = false
 
-    // Revert light (best effort, async fire-and-forget)
-    if (this.previousState && this.currentLightId) {
+    // Turn the light off (best effort, async fire-and-forget)
+    if (this.currentLightId) {
       const selector = `id:${this.currentLightId}`
-      const prev = this.previousState
 
       ;(async () => {
         try {
-          if (prev.power === 'off') {
-            await lifxClient.setState(selector, { power: 'off', duration: 1 })
-          } else {
-            await lifxClient.setState(selector, {
-              power: 'on',
-              color: prev.color,
-              brightness: prev.brightness,
-              duration: 1,
-            })
-          }
-          log('Indicator reverted to previous state')
+          await lifxClient.setState(selector, { power: 'off', duration: 1 })
+          log('Indicator light turned off')
         } catch (err) {
-          log(`Revert error: ${err instanceof Error ? err.message : String(err)}`)
+          log(`Turn off error: ${err instanceof Error ? err.message : String(err)}`)
         }
       })()
     }
 
-    this.previousState = null
     this.currentLightId = null
   }
 
@@ -223,21 +202,6 @@ class MtaIndicatorManager {
     }
   }
 
-  private async savePreviousState(lightId: string): Promise<void> {
-    try {
-      const lights = await lifxClient.listBySelector(`id:${lightId}`)
-      if (lights.length > 0) {
-        const light = lights[0]
-        this.previousState = {
-          power: light.power,
-          color: `hue:${light.color.hue} saturation:${light.color.saturation} kelvin:${light.color.kelvin}`,
-          brightness: light.brightness,
-        }
-      }
-    } catch {
-      this.previousState = null
-    }
-  }
 
   private readIndicatorConfig(): MtaIndicatorConfig {
     const row = getOne<CurrentStateRow>("SELECT * FROM current_state WHERE key = 'pref_mta_indicator'")
