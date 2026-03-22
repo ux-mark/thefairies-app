@@ -1445,17 +1445,13 @@ export default function RoomDetailPage() {
                           key={i}
                           className="flex items-center gap-3 rounded-xl card border p-3"
                         >
-                          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                            <label className="text-[10px] text-caption">
-                              Sensor
-                            </label>
-                            <select
-                              value={sensor.name}
-                              onChange={e =>
-                                handleUpdateSensor(i, { ...sensor, name: e.target.value })
-                              }
-                              className="h-11 min-w-0 w-full rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                            >
+                          <select
+                            value={sensor.name}
+                            onChange={e =>
+                              handleUpdateSensor(i, { ...sensor, name: e.target.value })
+                            }
+                            className="h-11 min-w-0 flex-1 rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                          >
                             <option value="" disabled>Select a sensor</option>
                             {sensor.name && !hubSensors.some(d => d.label === sensor.name) && (
                               <option value={sensor.name}>{sensor.name}</option>
@@ -1467,26 +1463,7 @@ export default function RoomDetailPage() {
                                   {d.label}
                                 </option>
                               ))}
-                            </select>
-                          </div>
-                          <div className="flex flex-col items-center gap-0.5">
-                            <label className="text-[10px] text-caption">
-                              Lux
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={10000}
-                              value={sensor.priority_threshold}
-                              onChange={e =>
-                                handleUpdateSensor(i, {
-                                  ...sensor,
-                                  priority_threshold: Number(e.target.value),
-                                })
-                              }
-                              className="h-11 w-20 rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-center text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                            />
-                          </div>
+                          </select>
                           <button
                             onClick={() => handleRemoveSensor(i)}
                             className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-caption transition-colors hover:text-red-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
