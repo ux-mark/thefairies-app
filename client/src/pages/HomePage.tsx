@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, ArrowDown, ArrowUp, Lock } from 'lucide-react'
+import { Thermometer, Sun, Clock, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, ArrowDown, ArrowUp, Lock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
@@ -107,12 +107,7 @@ function RoomCard({
           <h3 className="text-heading text-base font-semibold">
             {room.name}
           </h3>
-          {room.current_scene ? (
-            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-fairy-500/15 px-2 py-0.5 text-xs font-medium text-fairy-400">
-              <Sparkles className="h-3 w-3" />
-              {room.current_scene}
-            </span>
-          ) : (
+          {!room.current_scene && (
             <span className="text-caption mt-1 inline-block text-xs">
               No active scene
             </span>
