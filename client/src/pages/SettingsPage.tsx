@@ -1067,10 +1067,10 @@ function IndicatorSection() {
       const statusLabels: Record<string, string> = {
         green: 'Green — leave soon',
         orange: 'Orange — leave now',
-        red: 'Red — too late',
+        red: 'Red — no good trains soon',
         none: 'No data',
       }
-      toast({ message: `Indicator test: ${statusLabels[data.status] || data.status}` })
+      toast({ message: `Indicator test: ${statusLabels[data.status] || data.status} (updating for ${data.windowMinutes} min)` })
     },
     onError: () => toast({ message: 'Indicator test failed', type: 'error' }),
   })
@@ -1080,7 +1080,6 @@ function IndicatorSection() {
     lightId: '',
     lightLabel: '',
     sensorName: '',
-    duration: 30,
   }
 
   const updateConfig = (patch: Partial<MtaIndicatorConfig>) => {
@@ -1178,35 +1177,6 @@ function IndicatorSection() {
               ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-          </div>
-        </div>
-
-        {/* Duration stepper */}
-        <div>
-          <p className="text-heading text-sm mb-1.5">Duration</p>
-          <p className="text-caption text-xs mb-2">How long the light stays in status colour before reverting</p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => updateConfig({ duration: Math.max(5, config.duration - 5) })}
-              disabled={config.duration <= 5}
-              className="surface flex h-11 w-11 items-center justify-center rounded-lg border text-heading transition-colors hover:brightness-95 dark:hover:brightness-110 disabled:opacity-30"
-              style={{ borderColor: 'var(--border-secondary)' }}
-              aria-label="Decrease duration"
-            >
-              <Minus className="h-4 w-4" />
-            </button>
-            <span className="w-14 text-center text-sm font-medium text-heading">
-              {config.duration}s
-            </span>
-            <button
-              onClick={() => updateConfig({ duration: Math.min(120, config.duration + 5) })}
-              disabled={config.duration >= 120}
-              className="surface flex h-11 w-11 items-center justify-center rounded-lg border text-heading transition-colors hover:brightness-95 dark:hover:brightness-110 disabled:opacity-30"
-              style={{ borderColor: 'var(--border-secondary)' }}
-              aria-label="Increase duration"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
           </div>
         </div>
 

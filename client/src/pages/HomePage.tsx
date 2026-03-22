@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Sun, Clock, Sparkles, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, ArrowDown, ArrowUp, Lock } from 'lucide-react'
+import { Thermometer, Sun, Clock, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, ArrowDown, ArrowUp, Lock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
@@ -68,13 +68,15 @@ function RoomCard({
   room,
   scenes,
   currentMode,
-  onActivateScene,
+  onToggleScene,
+  onToggleAuto,
   isLocked,
 }: {
   room: Room
   scenes: Scene[]
   currentMode: string
-  onActivateScene: (name: string) => void
+  onToggleScene: (name: string, isActive: boolean) => void
+  onToggleAuto: () => void
   isLocked?: boolean
 }) {
   // Filter scenes: auto-activate only, match room + mode, in season
@@ -107,31 +109,24 @@ function RoomCard({
           <h3 className="text-heading text-base font-semibold">
             {room.name}
           </h3>
-          {room.current_scene ? (
-            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-fairy-500/15 px-2 py-0.5 text-xs font-medium text-fairy-400">
-              <Sparkles className="h-3 w-3" />
-              {room.current_scene}
-            </span>
-          ) : (
-            <span className="text-caption mt-1 inline-block text-xs">
-              No active scene
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1.5">
           {isLocked && (
             <Lock className="h-3.5 w-3.5 text-indigo-400" aria-label="Room locked" />
           )}
-          <div
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleAuto() }}
+            aria-label={`Switch to ${room.auto ? 'manual' : 'auto'} mode`}
             className={cn(
-              'rounded-full px-2 py-0.5 text-[10px] font-medium',
+              'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors cursor-pointer',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
               room.auto
-                ? 'bg-fairy-500/15 text-fairy-400'
-                : 'surface text-caption',
+                ? 'bg-fairy-500/15 text-fairy-400 hover:bg-fairy-500/25'
+                : 'surface text-caption hover:brightness-95 dark:hover:brightness-110',
             )}
           >
             {room.auto ? 'Auto' : 'Manual'}
-          </div>
+          </button>
         </div>
       </div>
 
@@ -162,22 +157,26 @@ function RoomCard({
       {/* Quick scene buttons */}
       {displayScenes.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {displayScenes.map(scene => (
-            <button
-              key={scene.name}
-              onClick={() => onActivateScene(scene.name)}
-              className={cn(
-                'flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                room.current_scene === scene.name
-                  ? 'bg-fairy-500/20 text-fairy-300'
-                  : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
-              )}
-            >
-              {scene.icon && <span className="text-sm">{scene.icon}</span>}
-              {scene.name}
-            </button>
-          ))}
+          {displayScenes.map(scene => {
+            const isActive = room.current_scene === scene.name
+            return (
+              <button
+                key={scene.name}
+                onClick={() => onToggleScene(scene.name, isActive)}
+                aria-pressed={isActive}
+                className={cn(
+                  'flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                  isActive
+                    ? 'bg-fairy-500/20 text-fairy-700 dark:text-fairy-300'
+                    : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
+                )}
+              >
+                {scene.icon && <span className="text-sm">{scene.icon}</span>}
+                {scene.name}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -417,6 +416,9 @@ function MtaCard() {
           const DirIcon = stop.config.direction === 'S' ? ArrowDown : ArrowUp
           const dotColor = STATUS_DOT_COLORS[stop.status]
           const next = stop.nextArrival
+          // Use catchableTrain when available (re-evaluated status from a later train)
+          const displayTrain = stop.catchableTrain ?? next
+          const buffer = displayTrain ? displayTrain.minutesAway - stop.config.walkTime : 0
 
           return (
             <div
@@ -443,30 +445,38 @@ function MtaCard() {
               </span>
 
               {/* Arrival info */}
-              {next ? (
+              {displayTrain ? (
                 <div className="flex-1 min-w-0">
-                  {stop.status === 'red' && stop.catchableTrain ? (
+                  {stop.status === 'red' ? (
+                    <>
+                      <span className="text-heading text-sm font-medium">
+                        Next in {next?.minutesAway ?? displayTrain.minutesAway} min
+                      </span>
+                      <span className="text-caption text-xs ml-1.5">
+                        (won't make it in time)
+                      </span>
+                    </>
+                  ) : stop.status === 'green' ? (
                     <>
                       <span className="text-heading text-sm font-medium">
                         {stop.leaveInMinutes != null && stop.leaveInMinutes > 0
-                          ? `Leave in ${stop.leaveInMinutes} min`
+                          ? `Leave within ${stop.leaveInMinutes} min`
                           : 'Leave now'}
                       </span>
                       <span className="text-caption text-xs ml-1.5">
-                        ({stop.catchableTrain.routeId} in {stop.catchableTrain.minutesAway} min)
+                        ({displayTrain.routeId} in {displayTrain.minutesAway} min, {buffer - (stop.leaveInMinutes ?? 0)} min wait at station)
                       </span>
                     </>
-                  ) : (
+                  ) : stop.status === 'orange' ? (
                     <>
                       <span className="text-heading text-sm font-medium">
-                        {next.minutesAway} min
+                        Leave now
                       </span>
                       <span className="text-caption text-xs ml-1.5">
-                        {stop.status === 'green' && `(${stop.config.walkTime} min walk + ${next.minutesAway - stop.config.walkTime} min buffer)`}
-                        {stop.status === 'orange' && `(${stop.config.walkTime} min walk \u2014 tight!)`}
+                        ({displayTrain.routeId} in {displayTrain.minutesAway} min — tight!)
                       </span>
                     </>
-                  )}
+                  ) : null}
                 </div>
               ) : (
                 <span className="text-caption text-xs flex-1">No trains</span>
@@ -527,13 +537,77 @@ export default function HomePage() {
 
   const activateSceneMutation = useMutation({
     mutationFn: api.scenes.activate,
+    onMutate: async (sceneName) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      const scene = scenes?.find(s => s.name === sceneName)
+      const sceneRoomNames = scene?.rooms?.map(r => r.name) ?? []
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room =>
+          sceneRoomNames.includes(room.name)
+            ? { ...room, current_scene: sceneName }
+            : room
+        )
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['scenes'] })
       toast({ message: 'Scene activated' })
     },
-    onError: () =>
-      toast({ message: 'Failed to activate scene', type: 'error' }),
+    onError: (_err, _name, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to activate scene', type: 'error' })
+    },
+  })
+
+  const deactivateSceneMutation = useMutation({
+    mutationFn: api.scenes.deactivate,
+    onMutate: async (sceneName) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      const scene = scenes?.find(s => s.name === sceneName)
+      const sceneRoomNames = scene?.rooms?.map(r => r.name) ?? []
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room =>
+          sceneRoomNames.includes(room.name) && room.current_scene === sceneName
+            ? { ...room, current_scene: null }
+            : room
+        )
+      )
+      return { previous }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      queryClient.invalidateQueries({ queryKey: ['scenes'] })
+      toast({ message: 'Scene deactivated' })
+    },
+    onError: (_err, _name, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to deactivate scene', type: 'error' })
+    },
+  })
+
+  const toggleAutoMutation = useMutation({
+    mutationFn: ({ name, auto }: { name: string; auto: boolean }) =>
+      api.rooms.update(name, { auto }),
+    onMutate: async ({ name, auto }) => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(room => room.name === name ? { ...room, auto } : room)
+      )
+      return { previous }
+    },
+    onSuccess: (_data, { auto }) => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      toast({ message: auto ? 'Automation enabled' : 'Automation disabled' })
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to update room', type: 'error' })
+    },
   })
 
   const currentMode = system?.mode ?? 'Evening'
@@ -603,8 +677,13 @@ export default function HomePage() {
                   room={room}
                   scenes={scenes ?? []}
                   currentMode={currentMode}
-                  onActivateScene={name =>
-                    activateSceneMutation.mutate(name)
+                  onToggleScene={(name, isActive) =>
+                    isActive
+                      ? deactivateSceneMutation.mutate(name)
+                      : activateSceneMutation.mutate(name)
+                  }
+                  onToggleAuto={() =>
+                    toggleAutoMutation.mutate({ name: room.name, auto: !room.auto })
                   }
                   isLocked={nightStatus?.lockedRooms.includes(room.name)}
                 />
