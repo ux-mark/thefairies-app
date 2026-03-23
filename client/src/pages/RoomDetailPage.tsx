@@ -21,7 +21,7 @@ import {
 import * as Switch from '@radix-ui/react-switch'
 import * as Tabs from '@radix-ui/react-tabs'
 import { api } from '@/lib/api'
-import type { Light, LightAssignment, RoomDetail, Sensor, Room, HubDevice, DeviceRoomAssignment } from '@/lib/api'
+import type { Light, LightAssignment, Sensor, HubDevice, DeviceRoomAssignment } from '@/lib/api'
 import { cn, getLightColorHex } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import { CollapsibleDeviceGroup } from '@/components/ui/CollapsibleDeviceGroup'
@@ -410,7 +410,7 @@ export default function RoomDetailPage() {
   const [autoEnabled, setAutoEnabled] = useState<boolean | null>(null)
   const [parentRoom, setParentRoom] = useState<string | null>(null)
   const [sensors, setSensors] = useState<Sensor[] | null>(null)
-  const [roomNameEdit, setRoomNameEdit] = useState<string | null>(null)
+  const [_roomNameEdit, _setRoomNameEdit] = useState<string | null>(null)
 
   // Compute effective values (from state or room data)
   const effectiveOrder = displayOrder ?? room?.display_order ?? 0
@@ -418,7 +418,6 @@ export default function RoomDetailPage() {
   const effectiveAuto = autoEnabled ?? room?.auto ?? false
   const effectiveParent = parentRoom ?? room?.parent_room ?? ''
   const effectiveSensors = sensors ?? room?.sensors ?? []
-  const effectiveRoomName = roomNameEdit ?? room?.name ?? ''
 
   // Light assignment state
   const [assigned, setAssigned] = useState<LightAssignment[] | null>(null)
@@ -584,18 +583,6 @@ export default function RoomDetailPage() {
   const filteredDeviceAssignments = useMemo(
     () => effectiveDeviceAssignments.filter(d => DEVICE_TYPES.includes(d.device_type)),
     [effectiveDeviceAssignments],
-  )
-
-  // Assigned switches/dimmers
-  const assignedSwitches = useMemo(
-    () => filteredDeviceAssignments.filter(d => SWITCH_TYPES.includes(d.device_type)),
-    [filteredDeviceAssignments],
-  )
-
-  // Assigned other devices (twinkly/fairy)
-  const assignedOtherDevices = useMemo(
-    () => filteredDeviceAssignments.filter(d => OTHER_TYPES.includes(d.device_type)),
-    [filteredDeviceAssignments],
   )
 
   // All device IDs already assigned to ANY room

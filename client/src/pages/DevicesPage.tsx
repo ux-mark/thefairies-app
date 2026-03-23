@@ -18,7 +18,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { Light, DeviceRoomAssignment, HubDevice, LightRoom, DeviceUsage } from '@/lib/api'
+import type { Light, DeviceRoomAssignment, HubDevice } from '@/lib/api'
 import { cn, getLightColorHex } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 
@@ -516,7 +516,7 @@ export default function DevicesPage() {
       for (const d of hubDevices) {
         if (!switchTypes.includes(d.device_type)) continue
         const assignment = deviceRoomMap.get(String(d.id))
-        const attrs = d.attributes as Record<string, unknown> | undefined
+        const attrs = d.attributes
         const switchAttr = attrs?.switch
         devices.push({
           key: `hub-${d.id}`,

@@ -15,7 +15,7 @@ export interface CollapsibleDeviceGroupProps {
 export function CollapsibleDeviceGroup({
   title,
   count,
-  totalInGroup,
+  totalInGroup: _totalInGroup,
   defaultOpen = false,
   onAssignAll,
   fullyAssigned = false,
