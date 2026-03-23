@@ -23,6 +23,9 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    modulePreload: false,
+  },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

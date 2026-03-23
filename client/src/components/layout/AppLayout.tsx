@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Home, DoorOpen, LayoutGrid, Settings, Sun, Moon, Monitor } from 'lucide-react'
+import { Home, DoorOpen, Sparkles, LayoutGrid, Settings, Sun, Moon, Monitor } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
