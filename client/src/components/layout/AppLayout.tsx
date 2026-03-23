@@ -59,7 +59,7 @@ export default function AppLayout() {
       <aside className="sidebar hidden w-56 shrink-0 border-r md:flex md:flex-col">
         <div className="flex items-center gap-2 border-b px-5 py-4">
           <Sparkles className="h-5 w-5 text-fairy-400" />
-          <h1 className="text-heading text-lg font-semibold">The Fairies</h1>
+          <h1 className="text-heading text-lg font-semibold">Home Fairy</h1>
         </div>
         {system?.mode && (
           <div className="border-b px-5 py-3">
@@ -98,14 +98,14 @@ export default function AppLayout() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-fairy-400 md:hidden" />
             <h1 className="text-heading text-lg font-semibold md:hidden">
-              The Fairies
+              Home Fairy
             </h1>
             <h2 className="text-heading hidden text-lg font-semibold md:block">
               {NAV_ITEMS.find(
                 n =>
                   n.to === location.pathname ||
                   (n.to !== '/' && location.pathname.startsWith(n.to)),
-              )?.label ?? 'The Fairies'}
+              )?.label ?? 'Home Fairy'}
             </h2>
           </div>
           <div className="flex items-center gap-2">

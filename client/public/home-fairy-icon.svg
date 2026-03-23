@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="wf" x1="0.5" y1="0.8" x2="0.5" y2="0">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#a7f3d0" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="rg" x1="0.5" y1="1" x2="0.5" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="60%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Right upper wing (scalloped) -->
+  <path d="M 268 255 C 282 200, 320 115, 385 45 C 418 12, 458 0, 482 10 C 505 20, 508 52, 502 88 C 495 128, 472 160, 442 180 C 465 172, 485 152, 495 132 C 485 162, 462 190, 428 208 C 452 202, 475 185, 488 168 C 478 195, 452 220, 415 235 C 380 252, 325 248, 290 240 Z" fill="url(#wf)"/>
+  <path d="M 268 255 C 292 198, 340 105, 405 38" stroke="#059669" stroke-width="2.5" fill="none" opacity="0.5"/>
+  <path d="M 268 255 C 298 215, 368 132, 465 80" stroke="#059669" stroke-width="2" fill="none" opacity="0.4"/>
+  <path d="M 268 255 C 310 238, 395 198, 485 172" stroke="#059669" stroke-width="1.5" fill="none" opacity="0.3"/>
+
+  <!-- Right lower wing (solid) -->
+  <path d="M 268 265 C 295 280, 355 315, 418 345 C 455 362, 485 370, 498 360 C 510 348, 508 325, 495 305 C 480 285, 458 272, 432 268 Z" fill="url(#wf)" opacity="0.82"/>
+  <path d="M 268 265 C 320 298, 405 348, 480 358" stroke="#059669" stroke-width="1.5" fill="none" opacity="0.28"/>
+  <path d="M 268 265 C 312 290, 395 328, 465 335" stroke="#059669" stroke-width="1.2" fill="none" opacity="0.2"/>
+
+  <!-- Left upper wing (scalloped) -->
+  <path d="M 244 255 C 230 200, 192 115, 127 45 C 94 12, 54 0, 30 10 C 7 20, 4 52, 10 88 C 17 128, 40 160, 70 180 C 47 172, 27 152, 17 132 C 27 162, 50 190, 84 208 C 60 202, 37 185, 24 168 C 34 195, 60 220, 97 235 C 132 252, 187 248, 222 240 Z" fill="url(#wf)"/>
+  <path d="M 244 255 C 220 198, 172 105, 107 38" stroke="#059669" stroke-width="2.5" fill="none" opacity="0.5"/>
+  <path d="M 244 255 C 214 215, 144 132, 47 80" stroke="#059669" stroke-width="2" fill="none" opacity="0.4"/>
+  <path d="M 244 255 C 202 238, 117 198, 27 172" stroke="#059669" stroke-width="1.5" fill="none" opacity="0.3"/>
+
+  <!-- Left lower wing (solid) -->
+  <path d="M 244 265 C 217 280, 157 315, 94 345 C 57 362, 27 370, 14 360 C 2 348, 4 325, 17 305 C 32 285, 54 272, 80 268 Z" fill="url(#wf)" opacity="0.82"/>
+  <path d="M 244 265 C 192 298, 107 348, 32 358" stroke="#059669" stroke-width="1.5" fill="none" opacity="0.28"/>
+  <path d="M 244 265 C 200 290, 117 328, 47 335" stroke="#059669" stroke-width="1.2" fill="none" opacity="0.2"/>
+
+  <!-- Organic curved walls -->
+  <path d="M 165 478 C 162 462, 150 408, 154 355 C 156 332, 164 322, 164 322 L 348 322 C 348 322, 356 332, 358 355 C 362 408, 350 462, 347 478 Z" fill="url(#bg)"/>
+
+  <!-- Mushroom-cap roof -->
+  <path d="M 125 332 C 130 305, 155 262, 192 235 C 222 215, 244 205, 256 202 C 268 205, 290 215, 320 235 C 357 262, 382 305, 387 332 Z" fill="url(#rg)"/>
+
+  <!-- Tilted chimney -->
+  <rect x="172" y="215" width="18" height="35" rx="3" fill="#059669" transform="rotate(-6 181 232)"/>
+  <rect x="168" y="211" width="26" height="8" rx="2" fill="#10b981" transform="rotate(-6 181 215)"/>
+
+  <!-- Arched fairy door -->
+  <path d="M 238 478 L 238 392 C 238 372, 246 360, 256 360 C 266 360, 274 372, 274 392 L 274 478 Z" fill="#0f172a"/>
+  <circle cx="266" cy="425" r="3.5" fill="#34d399"/>
+
+  <!-- Square window left -->
+  <rect x="187" y="362" width="28" height="28" rx="3" fill="#0f172a"/>
+  <line x1="201" y1="362" x2="201" y2="390" stroke="#10b981" stroke-width="2"/>
+  <line x1="187" y1="376" x2="215" y2="376" stroke="#10b981" stroke-width="2"/>
+
+  <!-- Square window right -->
+  <rect x="297" y="362" width="28" height="28" rx="3" fill="#0f172a"/>
+  <line x1="311" y1="362" x2="311" y2="390" stroke="#10b981" stroke-width="2"/>
+  <line x1="297" y1="376" x2="325" y2="376" stroke="#10b981" stroke-width="2"/>
+</svg>
