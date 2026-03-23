@@ -1,11 +1,17 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Home, DoorOpen, Sparkles, LayoutGrid, Settings, Sun, Moon, Monitor } from 'lucide-react'
+import { Home, DoorOpen, LayoutGrid, Settings, Sun, Moon, Monitor } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import type { Theme } from '@/hooks/useTheme'
 import ToastContainer from '@/components/ui/Toast'
+
+function HomeFairyIcon({ className }: { className?: string }) {
+  return (
+    <img src="/home-fairy-icon.svg" alt="" aria-hidden="true" className={className} />
+  )
+}
 
 const NAV_ITEMS = [
   { to: '/', icon: Home, label: 'Home' },
@@ -58,7 +64,7 @@ export default function AppLayout() {
       {/* Desktop sidebar */}
       <aside className="sidebar hidden w-56 shrink-0 border-r md:flex md:flex-col">
         <div className="flex items-center gap-2 border-b px-5 py-4">
-          <Sparkles className="h-5 w-5 text-fairy-400" />
+          <HomeFairyIcon className="h-6 w-6" />
           <h1 className="text-heading text-lg font-semibold">Home Fairy</h1>
         </div>
         {system?.mode && (
@@ -96,7 +102,7 @@ export default function AppLayout() {
         {/* Header */}
         <header className="chrome flex items-center justify-between border-b px-4 py-3 md:px-6 md:py-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-fairy-400 md:hidden" />
+            <HomeFairyIcon className="h-6 w-6 md:hidden" />
             <h1 className="text-heading text-lg font-semibold md:hidden">
               Home Fairy
             </h1>
