@@ -245,6 +245,81 @@ export interface NightStatus {
   wakeMode: string
 }
 
+// ── Dashboard types ──────────────────────────────────────────────────────────
+
+export interface BatteryDevice {
+  id: number
+  label: string
+  device_type: string
+  battery: number | null
+  status: 'ok' | 'low' | 'critical'
+  updated_at: string
+}
+
+export interface PowerDevice {
+  id: number
+  label: string
+  room_name: string | null
+  power: number
+  energy: number | null
+  switch: 'on' | 'off'
+}
+
+export interface DashboardSummary {
+  mode: string
+  allModes: string[]
+  rooms: Array<{
+    name: string
+    temperature: number | null
+    lux: number | null
+    current_scene: string | null
+    last_active: string | null
+    auto: number
+  }>
+  battery: BatteryDevice[]
+  power: PowerDevice[]
+  sunSchedule: SunScheduleEntry[]
+  sunPhase: string
+  sunTimes: Record<string, string>
+  weather: {
+    temp: number
+    description: string
+    icon: string
+    humidity: number
+    wind_speed: number
+  } | null
+  nightStatus: NightStatus
+}
+
+export interface HistoryPoint {
+  value: number
+  min?: number
+  max?: number
+  recorded_at: string
+}
+
+export interface HistoryResponse {
+  data: HistoryPoint[]
+  count: number
+  period: string
+}
+
+export interface DashboardStats {
+  totalRows: number
+  oldestRecord: string | null
+  sources: Array<{ source: string; count: number }>
+  dbSizeBytes: number
+  dbSizeMB: number
+}
+
+export interface DeviceContext {
+  rooms: Array<{ room_name: string; config: Record<string, unknown> }>
+  scenes: string[]
+  lastEvent: string | null
+  updatedAt: string | null
+  historySources: Array<{ source: string; count: number }>
+}
+
 export interface CombinedMtaStatus {
   overallStatus: 'green' | 'orange' | 'red' | 'none'
   overallMessage: string
@@ -486,6 +561,25 @@ export const api = {
         }[]
       >('/system/logs' + (qs ? '?' + qs : ''))
     },
+  },
+  dashboard: {
+    getSummary: () => fetchApi<DashboardSummary>('/dashboard/summary'),
+    getHistory: (source: string, sourceId: string, period?: string) =>
+      fetchApi<HistoryResponse>(
+        '/dashboard/history/' +
+          encodeURIComponent(source) +
+          '/' +
+          encodeURIComponent(sourceId) +
+          (period ? '?period=' + period : ''),
+      ),
+    getStats: () => fetchApi<DashboardStats>('/dashboard/stats'),
+    deleteHistory: (options: { all?: boolean; olderThan?: string; source?: string }) =>
+      fetchApi<{ deleted: number }>('/dashboard/history', {
+        method: 'DELETE',
+        body: JSON.stringify(options),
+      }),
+    getDeviceContext: (deviceId: string) =>
+      fetchApi<DeviceContext>('/dashboard/device/' + encodeURIComponent(deviceId) + '/context'),
   },
   hubitat: {
     getDevices: () => fetchApi<HubDevice[]>('/hubitat/devices'),

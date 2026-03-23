@@ -90,6 +90,42 @@
 - **Summary**: MTA and weather indicator lights now respect room state — suppressed when room is locked (night/guest night), automation disabled, or manual scene override active
 - **Files**: `server/src/lib/motion-handler.ts`, `server/src/lib/weather-indicator.ts`
 
+## PR #13 — Add text label to Keep On toggle, add device config to Devices page
+- **Branch**: fix/keep-on-toggle-label-and-devices-page → dev
+- **Created**: 2026-03-23
+- **Status**: merged
+- **Merge date**: 2026-03-23
+- **Branch cleanup**: done
+- **Summary**: Fixed icon-only anti-pattern on Keep On toggle (added text label), added Keep On toggle to Devices page for hub devices, added PATCH endpoint for device config updates, logged discovered issues
+- **Files**: `server/src/routes/hubitat.ts`, `client/src/lib/api.ts`, `client/src/pages/RoomDetailPage.tsx`, `client/src/pages/DevicesPage.tsx`, `.claude/memory/issues.md`
+
+## PR #14 — Fix TypeScript build errors: missing fields and unused imports
+- **Branch**: fix/ts-errors-cleanup → dev
+- **Created**: 2026-03-23
+- **Status**: merged
+- **Merge date**: 2026-03-23
+- **Branch cleanup**: done
+- **Summary**: Added missing `attributes` field to `HubDevice` interface and `description` field to `WeatherColorEntry` interface, removed all unused imports/variables across 5 client files. `tsc --noEmit` now passes clean.
+- **Files**: `client/src/lib/api.ts`, `client/src/pages/DevicesPage.tsx`, `client/src/pages/HomePage.tsx`, `client/src/pages/RoomDetailPage.tsx`, `client/src/pages/SettingsPage.tsx`, `client/src/components/ui/CollapsibleDeviceGroup.tsx`, `client/src/components/ui/ColorBrightnessPicker.tsx`
+
+## PR #15 — Refactor Settings page into grouped accordion with ALL CAPS fix
+- **Branch**: feature/settings-accordion-ux → dev
+- **Created**: 2026-03-23
+- **Status**: merged
+- **Merge date**: 2026-03-23
+- **Branch cleanup**: done
+- **Summary**: Groups 11 flat Settings sections into 5 collapsible accordion categories (Preferences, Night and schedule, Public transport, Weather, System). Removes ALL CAPS from section titles, borough labels, and sub-headers. Smooth CSS grid-rows animation, full a11y.
+- **Files**: `client/src/pages/SettingsPage.tsx`
+
+## PR #16 — Persist room locks to database, respect Sleep Time in scheduler
+- **Branch**: fix/persist-room-locks → dev
+- **Created**: 2026-03-23
+- **Status**: merged
+- **Merge date**: 2026-03-23
+- **Branch cleanup**: done
+- **Summary**: Room locks persisted to current_state DB table (survive restarts); sun scheduler skips transitions when mode is Sleep Time
+- **Files**: `server/src/lib/motion-handler.ts`, `server/src/lib/sun-mode-scheduler.ts`
+
 ## PR #12 — Update default exclude rooms for night modes
 - **Branch**: fix/nighttime-default-exclude-rooms → dev
 - **Created**: 2026-03-22

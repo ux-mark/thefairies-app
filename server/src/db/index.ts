@@ -97,6 +97,18 @@ export function initDb(): void {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(device_id, room_name)
     );
+
+    CREATE TABLE IF NOT EXISTS device_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      value REAL,
+      value_text TEXT,
+      recorded_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_device_history_lookup
+      ON device_history (source, source_id, recorded_at);
   `)
 
   // Migration: add scene_manual column to rooms

@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-03-23 — Dashboard, device insights, and historical data infrastructure
+- New "Insights" page at /dashboard with 4 dashboard cards: Energy, Battery, Environment, Sun and Mode
+- Historical data infrastructure: device_history table, 10-minute snapshot collector, indefinite retention
+- Hubitat webhook now captures power (watts) and energy (kWh) events from smart plugs
+- Dashboard aggregate API endpoint (GET /api/dashboard/summary) reduces frontend from 6+ requests to 1
+- History API with time-series aggregation (24h full resolution, 7d+ hourly averages)
+- Chart.js integration with reusable TimeSeriesChart component (dark theme, responsive)
+- Device detail page at /devices/:id showing full attributes, room/scene context, and history charts
+- Data management section in Settings: view DB size, delete history by age/source/all with VACUUM
+- Socket.io client integration: real-time dashboard updates on Hubitat events and mode changes
+- 6th nav item "Insights" with BarChart3 icon added to sidebar and mobile bottom nav
+- User personas documented: Homeowner, Guest, Commuter, Away User
+- Files: server/src/db/index.ts, server/src/index.ts, server/src/lib/history-collector.ts, server/src/routes/dashboard.ts, client/src/pages/DashboardPage.tsx, client/src/pages/DeviceDetailPage.tsx, client/src/components/dashboard/*.tsx, client/src/hooks/useSocket.ts, client/src/lib/api.ts, client/src/components/layout/AppLayout.tsx, client/src/App.tsx, client/src/pages/SettingsPage.tsx, client/src/pages/DevicesPage.tsx
+
 ## 2026-03-23 — Persist room locks to database + sun scheduler respects Sleep Time
 - Room locks now stored in `current_state` table as `locked_rooms` JSON array, surviving server restarts
 - On startup, `MotionHandler` constructor loads persisted locks from DB
