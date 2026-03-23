@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight } from 'lucide-react'
-import { api } from '@/lib/api'
+import { ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react'
+import { api, type DeviceInsightsData } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
+import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,22 +17,23 @@ interface SourceMeta {
   unit: string
   color: string
   label: string
+  chartTitle: string
 }
 
 function getSourceMeta(source: string): SourceMeta {
   switch (source) {
     case 'power':
-      return { unit: 'W', color: '#f59e0b', label: 'Power' }
+      return { unit: 'W', color: '#f59e0b', label: 'Power', chartTitle: 'Power usage over time' }
     case 'energy':
-      return { unit: 'kWh', color: '#8b5cf6', label: 'Energy' }
+      return { unit: 'kWh', color: '#8b5cf6', label: 'Energy', chartTitle: 'Energy consumption over time' }
     case 'battery':
-      return { unit: '%', color: '#22c55e', label: 'Battery' }
+      return { unit: '%', color: '#22c55e', label: 'Battery', chartTitle: 'Battery drain over time' }
     case 'temperature':
-      return { unit: '°', color: '#10b981', label: 'Temperature' }
+      return { unit: '°', color: '#10b981', label: 'Temperature', chartTitle: 'Temperature trend' }
     case 'lux':
-      return { unit: 'lux', color: '#fbbf24', label: 'Illuminance' }
+      return { unit: 'lux', color: '#fbbf24', label: 'Illuminance', chartTitle: 'Illuminance over time' }
     default:
-      return { unit: '', color: '#10b981', label: source }
+      return { unit: '', color: '#10b981', label: source, chartTitle: `${source} over time` }
   }
 }
 
@@ -91,6 +93,165 @@ function PageSkeleton() {
   )
 }
 
+// ── Battery level bar ─────────────────────────────────────────────────────────
+
+function BatteryBar({ level }: { level: number }) {
+  const clamped = Math.min(100, Math.max(0, level))
+  const colorClass =
+    clamped <= 15
+      ? 'bg-red-500'
+      : clamped <= 30
+        ? 'bg-amber-400'
+        : 'bg-green-500'
+
+  return (
+    <div
+      className="h-3 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]"
+      role="progressbar"
+      aria-valuenow={clamped}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`Battery level ${clamped}%`}
+    >
+      <div
+        className={cn('h-full rounded-full transition-all duration-500', colorClass)}
+        style={{ width: `${clamped}%` }}
+      />
+    </div>
+  )
+}
+
+// ── Headline insights ─────────────────────────────────────────────────────────
+
+function HeadlineInsights({
+  deviceInsights,
+}: {
+  deviceInsights: DeviceInsightsData | undefined
+}) {
+  if (!deviceInsights) return null
+
+  const { power, battery, temperature } = deviceInsights.insights
+
+  if (!power && !battery && !temperature) return null
+
+  return (
+    <section aria-labelledby="insights-heading">
+      <div className="card rounded-xl border p-5">
+        <h2
+          id="insights-heading"
+          className="mb-4 text-sm font-semibold text-heading"
+        >
+          At a glance
+        </h2>
+
+        <div className="space-y-5">
+          {/* ── Power insights ─────────────────────────────────────────── */}
+          {power && (
+            <div>
+              <div className="flex flex-wrap items-baseline gap-3">
+                <span className="text-2xl font-bold tabular-nums text-heading">
+                  {power.currentWatts} W
+                </span>
+                <OverUnderBadge percent={power.overUnderPercent} size="md" />
+              </div>
+              <p className="mt-0.5 text-xs text-caption">Current draw</p>
+
+              {power.percentOfTotal > 0 && (
+                <p className="mt-3 text-sm text-body">
+                  This device accounts for{' '}
+                  <strong className="font-semibold text-heading">
+                    {power.percentOfTotal}%
+                  </strong>{' '}
+                  of your total energy draw.
+                </p>
+              )}
+
+              {power.dailyCostImpact !== null && (
+                <p className="mt-1 text-sm text-caption">
+                  Estimated daily cost:{' '}
+                  <span className="font-medium text-body">
+                    {power.currencySymbol}
+                    {power.dailyCostImpact.toFixed(2)}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Battery insights ───────────────────────────────────────── */}
+          {battery && (
+            <div>
+              {/* Critical replacement warning */}
+              {battery.predictedDaysRemaining !== null &&
+                battery.predictedDaysRemaining < 30 && (
+                  <div
+                    className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3"
+                    role="alert"
+                  >
+                    <p className="text-sm font-semibold text-red-400">
+                      Replace soon — estimated{' '}
+                      <strong>{battery.predictedDaysRemaining} days</strong>{' '}
+                      remaining
+                    </p>
+                  </div>
+                )}
+
+              <BatteryBar level={battery.currentLevel} />
+
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums text-heading">
+                  {battery.currentLevel}%
+                </span>
+                <span className="text-xs text-caption">battery remaining</span>
+              </div>
+
+              {battery.drainPerDay !== null && (
+                <p className="mt-2 text-sm text-caption">
+                  Draining at{' '}
+                  <span className="font-medium text-body">
+                    {battery.drainPerDay}% per day
+                  </span>
+                </p>
+              )}
+
+              {battery.predictedDaysRemaining !== null &&
+                battery.predictedDaysRemaining >= 30 && (
+                  <p className="mt-1 text-sm text-caption">
+                    At current rate, this battery will need replacing in
+                    approximately{' '}
+                    <strong className="font-semibold text-body">
+                      {battery.predictedDaysRemaining} days
+                    </strong>
+                    .
+                  </p>
+                )}
+            </div>
+          )}
+
+          {/* ── Temperature insights ───────────────────────────────────── */}
+          {temperature && (
+            <div>
+              <span className="text-2xl font-bold tabular-nums text-heading">
+                {temperature.currentTemp}°
+              </span>
+              <p className="mt-0.5 text-xs text-caption">Current temperature</p>
+
+              {temperature.avgTemp30d !== null && (
+                <p className="mt-2 text-sm text-caption">
+                  30-day average:{' '}
+                  <span className="font-medium text-body">
+                    {temperature.avgTemp30d}°
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── History chart panel ────────────────────────────────────────────────────────
 
 function HistoryChart({
@@ -103,6 +264,7 @@ function HistoryChart({
   period: Period
 }) {
   const meta = getSourceMeta(source)
+  const showRange = period === '7d' || period === '30d'
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard', 'history', source, deviceLabel, period],
@@ -112,7 +274,7 @@ function HistoryChart({
 
   return (
     <div>
-      <p className="mb-3 text-sm font-medium text-heading">{meta.label}</p>
+      <p className="mb-3 text-sm font-medium text-heading">{meta.chartTitle}</p>
       <TimeSeriesChart
         data={data?.data ?? []}
         label={meta.label}
@@ -120,7 +282,7 @@ function HistoryChart({
         unit={meta.unit}
         height={180}
         loading={isLoading}
-        showRange={false}
+        showRange={showRange}
         emptyMessage="No data recorded for this period."
       />
     </div>
@@ -192,6 +354,92 @@ function DeviceTypeBadge({ type }: { type: string }) {
   )
 }
 
+// ── All attributes collapsible ────────────────────────────────────────────────
+
+function AllAttributesSection({
+  attributeEntries,
+}: {
+  attributeEntries: [string, unknown][]
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const headingId = 'all-attributes-heading'
+  const panelId = 'all-attributes-panel'
+
+  if (attributeEntries.length === 0) return null
+
+  return (
+    <section aria-labelledby={headingId}>
+      <div className="card rounded-xl border px-5">
+        <button
+          id={headingId}
+          aria-expanded={isOpen}
+          aria-controls={panelId}
+          onClick={() => setIsOpen(o => !o)}
+          className={cn(
+            'flex w-full items-center justify-between py-4 text-left transition-colors',
+            'min-h-[44px]',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+            !isOpen && 'border-b border-[var(--border-secondary)]',
+          )}
+        >
+          <span className="text-sm font-semibold text-heading">
+            All attributes
+          </span>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 text-[var(--text-secondary)] transition-transform duration-300',
+              isOpen && 'rotate-180',
+            )}
+            aria-hidden="true"
+          />
+        </button>
+
+        <div
+          id={panelId}
+          role="region"
+          aria-labelledby={headingId}
+          className="grid transition-all duration-300"
+          style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden">
+            <dl className="divide-y divide-[var(--border-secondary)] pb-2">
+              {attributeEntries.map(([key, value]) => {
+                const highlighted = isHighlightedAttribute(key)
+                const unit = attributeUnit(key)
+                const formatted = formatAttributeValue(value)
+
+                return (
+                  <div
+                    key={key}
+                    className="flex items-baseline justify-between gap-4 py-2.5 first:pt-3"
+                  >
+                    <dt className="shrink-0 text-sm text-body capitalize">
+                      {key.replace(/_/g, ' ')}
+                    </dt>
+                    <dd
+                      className={cn(
+                        'text-right text-sm tabular-nums',
+                        highlighted ? 'font-semibold text-heading' : 'text-body',
+                      )}
+                    >
+                      {formatted}
+                      {unit && (
+                        <span className="ml-0.5 text-xs text-caption">
+                          {unit}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )
+              })}
+            </dl>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DeviceDetailPage() {
@@ -223,7 +471,17 @@ export default function DeviceDetailPage() {
     staleTime: 60_000,
   })
 
-  const isLoading = devicesLoading || (!!device && contextLoading)
+  const {
+    data: deviceInsights,
+    isLoading: insightsLoading,
+  } = useQuery({
+    queryKey: ['dashboard', 'device', id, 'insights'],
+    queryFn: () => api.dashboard.getDeviceInsights(id!),
+    enabled: !!id && !!device,
+    staleTime: 60_000,
+  })
+
+  const isLoading = devicesLoading || (!!device && (contextLoading || insightsLoading))
   const isError = devicesError || contextError
 
   // ── Loading state ───────────────────────────────────────────────────────
@@ -314,10 +572,11 @@ export default function DeviceDetailPage() {
   const attributeEntries = Object.entries(attributes)
 
   const historySources = context?.historySources ?? []
+  const roomDevices = deviceInsights?.roomDevices ?? []
 
   return (
     <div className="space-y-6">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+      {/* ── 1. Header ────────────────────────────────────────────────────── */}
       <header>
         <button
           onClick={() => navigate(-1)}
@@ -342,53 +601,46 @@ export default function DeviceDetailPage() {
         </div>
       </header>
 
-      {/* ── Attributes ──────────────────────────────────────────────────── */}
-      {attributeEntries.length > 0 && (
-        <section aria-labelledby="attributes-heading">
-          <div className="card rounded-xl border p-5">
+      {/* ── 2. Headline insights ──────────────────────────────────────────── */}
+      <HeadlineInsights deviceInsights={deviceInsights} />
+
+      {/* ── 3. History charts ─────────────────────────────────────────────── */}
+      <section aria-labelledby="history-heading">
+        <div className="card rounded-xl border p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2
-              id="attributes-heading"
-              className="mb-4 text-sm font-semibold text-heading"
+              id="history-heading"
+              className="text-sm font-semibold text-heading"
             >
-              Attributes
+              History
             </h2>
 
-            <dl className="divide-y divide-[var(--border-secondary)]">
-              {attributeEntries.map(([key, value]) => {
-                const highlighted = isHighlightedAttribute(key)
-                const unit = attributeUnit(key)
-                const formatted = formatAttributeValue(value)
-
-                return (
-                  <div
-                    key={key}
-                    className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
-                  >
-                    <dt className="shrink-0 text-sm text-body capitalize">
-                      {key.replace(/_/g, ' ')}
-                    </dt>
-                    <dd
-                      className={cn(
-                        'text-right text-sm tabular-nums',
-                        highlighted ? 'font-semibold text-heading' : 'text-body',
-                      )}
-                    >
-                      {formatted}
-                      {unit && (
-                        <span className="ml-0.5 text-xs text-caption">
-                          {unit}
-                        </span>
-                      )}
-                    </dd>
-                  </div>
-                )
-              })}
-            </dl>
+            {historySources.length > 0 && (
+              <PeriodTabs value={period} onChange={setPeriod} />
+            )}
           </div>
-        </section>
-      )}
 
-      {/* ── Rooms and scenes ────────────────────────────────────────────── */}
+          {historySources.length > 0 ? (
+            <div className="space-y-8">
+              {historySources.map(s => (
+                <HistoryChart
+                  key={s.source}
+                  source={s.source}
+                  deviceLabel={device.label}
+                  period={period}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-caption">
+              No historical data yet. Data collection starts automatically
+              and trends will appear within a few hours.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ── 4. Room and scene context ─────────────────────────────────────── */}
       {context && (
         <section aria-labelledby="context-heading">
           <div className="card rounded-xl border p-5">
@@ -488,6 +740,38 @@ export default function DeviceDetailPage() {
                 </p>
               )}
 
+              {/* Other devices in this room */}
+              {roomDevices.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-caption">
+                    Other devices in this room
+                  </p>
+                  <ul className="space-y-1" role="list">
+                    {roomDevices.map(d => (
+                      <li key={d.id}>
+                        <Link
+                          to={`/devices/${d.id}`}
+                          className={cn(
+                            'flex min-h-[44px] items-center gap-2 rounded-lg px-2 -mx-2',
+                            'text-sm text-fairy-400 transition-colors hover:bg-fairy-500/10',
+                            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                          )}
+                        >
+                          <span className="flex-1">{d.label}</span>
+                          <span className="shrink-0 rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+                            {d.device_type}
+                          </span>
+                          <ChevronRight
+                            className="h-4 w-4 shrink-0 opacity-50"
+                            aria-hidden="true"
+                          />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Last event */}
               {context.lastEvent && (
                 <p className="text-xs text-caption">
@@ -505,41 +789,8 @@ export default function DeviceDetailPage() {
         </section>
       )}
 
-      {/* ── History ─────────────────────────────────────────────────────── */}
-      <section aria-labelledby="history-heading">
-        <div className="card rounded-xl border p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2
-              id="history-heading"
-              className="text-sm font-semibold text-heading"
-            >
-              History
-            </h2>
-
-            {historySources.length > 0 && (
-              <PeriodTabs value={period} onChange={setPeriod} />
-            )}
-          </div>
-
-          {historySources.length > 0 ? (
-            <div className="space-y-8">
-              {historySources.map(s => (
-                <HistoryChart
-                  key={s.source}
-                  source={s.source}
-                  deviceLabel={device.label}
-                  period={period}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-caption">
-              No historical data yet. Data collection starts automatically
-              and trends will appear within a few hours.
-            </p>
-          )}
-        </div>
-      </section>
+      {/* ── 5. All attributes (collapsed by default) ─────────────────────── */}
+      <AllAttributesSection attributeEntries={attributeEntries} />
     </div>
   )
 }
