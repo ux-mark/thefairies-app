@@ -12,7 +12,7 @@
  * Brightness is handled as a separate slider below the picker because
  * LIFX treats brightness independently from colour (hue + saturation).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { HsvColorPicker } from 'react-colorful'
 import { kelvinToHex, hsbToHex, debounce } from '@/lib/utils'
 

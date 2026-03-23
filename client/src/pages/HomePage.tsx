@@ -3,7 +3,7 @@ import { Thermometer, Sun, Clock, Zap, Cloud, Droplets, Wind, Power, Moon, Users
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
-import type { Room, Scene, MtaStatus, CombinedMtaStatus, NightStatus } from '@/lib/api'
+import type { Room, Scene } from '@/lib/api'
 import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
 
 // ── Skeleton loader ──────────────────────────────────────────────────────────
@@ -412,7 +412,6 @@ function MtaCard() {
       {/* Per-stop rows */}
       <div className="space-y-2">
         {combinedStatus.stops.map((stop, i) => {
-          const dirLabel = stop.config.direction === 'S' ? 'Downtown' : 'Uptown'
           const DirIcon = stop.config.direction === 'S' ? ArrowDown : ArrowUp
           const dotColor = STATUS_DOT_COLORS[stop.status]
           const next = stop.nextArrival

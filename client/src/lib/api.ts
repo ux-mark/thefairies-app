@@ -146,6 +146,7 @@ export interface HubDevice {
   device_type: string
   capabilities: string[]
   room_name: string | null
+  attributes: Record<string, unknown>
 }
 
 export interface DeviceRoomAssignment {
@@ -228,6 +229,7 @@ export interface WeatherColorEntry {
   color: string
   name: string
   hex: string
+  description: string
 }
 
 export interface DeviceUsage {

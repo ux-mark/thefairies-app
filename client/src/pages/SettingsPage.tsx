@@ -18,7 +18,6 @@ import {
   Search,
   Minus,
   ChevronDown,
-  ChevronUp,
   ArrowDown,
   ArrowUp,
   Lightbulb,
@@ -31,7 +30,7 @@ import {
 } from 'lucide-react'
 import { HsvColorPicker } from 'react-colorful'
 import { api } from '@/lib/api'
-import type { SunScheduleEntry, ConfiguredStop, MtaStop, MtaIndicatorConfig, WeatherIndicatorConfig, WeatherColorEntry, NightStatus } from '@/lib/api'
+import type { SunScheduleEntry, ConfiguredStop, MtaStop, MtaIndicatorConfig, WeatherIndicatorConfig } from '@/lib/api'
 import { cn, hsbToHex, formatTime } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import { useTheme } from '@/hooks/useTheme'
