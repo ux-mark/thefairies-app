@@ -115,11 +115,12 @@ function GeneralSection() {
   })
 
   const tempUnit = prefs?.temp_unit ?? 'C'
+  const energyRate = prefs?.energy_rate ?? ''
 
   return (
     <Section title="General">
       <div className="flex items-center justify-between">
-        <span className="text-heading text-sm">Temperature Unit</span>
+        <span className="text-heading text-sm">Temperature unit</span>
         <div className="surface flex rounded-lg border" style={{ borderColor: 'var(--border-secondary)' }}>
           {(['C', 'F'] as const).map(unit => (
             <button
@@ -136,6 +137,23 @@ function GeneralSection() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-heading text-sm">Energy rate</span>
+          <p className="text-caption text-xs">Cost per kWh for energy estimates</p>
+        </div>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          placeholder="0.30"
+          value={energyRate}
+          onChange={(e) => mutation.mutate({ key: 'energy_rate', value: e.target.value })}
+          className="w-24 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-right text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          aria-label="Energy rate per kWh"
+        />
       </div>
     </Section>
   )

@@ -5,6 +5,7 @@ import { getSunTimes, getCurrentSunPhase } from '../lib/sun-tracker.js'
 import { sunModeScheduler } from '../lib/sun-mode-scheduler.js'
 import { motionHandler } from '../lib/motion-handler.js'
 import { getHistoryStats } from '../lib/history-collector.js'
+import { computeInsights } from '../lib/insights-engine.js'
 
 const router = Router()
 
@@ -131,6 +132,21 @@ router.get('/summary', async (_req: Request, res: Response) => {
       wakeMode: wakeModeRow?.value || 'Morning',
     }
 
+    // Energy rate preference
+    const energyRateRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'pref_energy_rate'",
+    )
+    const energyRate = energyRateRow?.value ? Number(energyRateRow.value) : 0.30
+
+    // Compute insights from current state + historical data
+    const insights = computeInsights({
+      power,
+      rooms: rooms as Array<{ name: string; temperature: number | null; lux: number | null }>,
+      battery,
+      weather: weather as { temp: number; humidity: number } | null,
+      energyRate,
+    })
+
     res.json({
       mode,
       allModes,
@@ -142,6 +158,7 @@ router.get('/summary', async (_req: Request, res: Response) => {
       sunTimes,
       weather,
       nightStatus,
+      insights,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

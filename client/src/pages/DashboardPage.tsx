@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { BarChart3 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDashboardSocket } from '@/hooks/useSocket'
+import AttentionBar from '@/components/dashboard/AttentionBar'
+import HomeSummaryStrip from '@/components/dashboard/HomeSummaryStrip'
 import EnergyCard from '@/components/dashboard/EnergyCard'
 import BatteryCard from '@/components/dashboard/BatteryCard'
 import EnvironmentCard from '@/components/dashboard/EnvironmentCard'
@@ -10,11 +12,18 @@ import SunModeCard from '@/components/dashboard/SunModeCard'
 function DashboardSkeleton() {
   return (
     <div className="space-y-4" role="status" aria-label="Loading dashboard">
+      {/* Summary strip skeleton */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="card animate-pulse rounded-xl border p-4">
+            <div className="mb-2 h-3 w-16 rounded bg-[var(--bg-tertiary)]" />
+            <div className="h-6 w-20 rounded bg-[var(--bg-tertiary)]" />
+          </div>
+        ))}
+      </div>
+      {/* Card skeletons */}
       {[1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          className="card animate-pulse rounded-xl border p-5"
-        >
+        <div key={i} className="card animate-pulse rounded-xl border p-5">
           <div className="mb-4 h-5 w-32 rounded bg-[var(--bg-tertiary)]" />
           <div className="space-y-3">
             <div className="h-4 w-full rounded bg-[var(--bg-tertiary)]" />
@@ -68,16 +77,40 @@ export default function DashboardPage() {
       )}
 
       {data && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <EnergyCard power={data.power} />
-          <BatteryCard battery={data.battery} />
-          <EnvironmentCard weather={data.weather} rooms={data.rooms} />
-          <SunModeCard
-            mode={data.mode}
-            sunSchedule={data.sunSchedule}
-            sunPhase={data.sunPhase}
-            sunTimes={data.sunTimes}
-          />
+        <div className="space-y-4">
+          {/* Attention bar — only renders when there are items */}
+          {data.insights?.attention && data.insights.attention.length > 0 && (
+            <AttentionBar items={data.insights.attention} />
+          )}
+
+          {/* Home summary strip — 4 stat pills */}
+          {data.insights && (
+            <HomeSummaryStrip insights={data.insights} />
+          )}
+
+          {/* Detail cards */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <EnergyCard
+              power={data.power}
+              insights={data.insights?.energy ?? null}
+            />
+            <BatteryCard
+              battery={data.battery}
+              insights={data.insights?.battery ?? null}
+            />
+            <EnvironmentCard
+              weather={data.weather}
+              rooms={data.rooms}
+              tempInsights={data.insights?.temperature ?? null}
+              luxInsights={data.insights?.lux ?? null}
+            />
+            <SunModeCard
+              mode={data.mode}
+              sunSchedule={data.sunSchedule}
+              sunPhase={data.sunPhase}
+              sunTimes={data.sunTimes}
+            />
+          </div>
         </div>
       )}
     </div>

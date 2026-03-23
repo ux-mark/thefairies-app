@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Zap } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
-import type { PowerDevice } from '@/lib/api'
+import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
+import type { PowerDevice, EnergyInsights } from '@/lib/api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,14 +28,20 @@ function powerIntensityClass(watts: number, maxWatts: number): string {
 interface DeviceRowProps {
   device: PowerDevice
   maxWatts: number
+  anomaly?: EnergyInsights['deviceAnomalies'][number] | null
 }
 
-function DeviceRow({ device, maxWatts }: DeviceRowProps) {
+function DeviceRow({ device, maxWatts, anomaly }: DeviceRowProps) {
   const isOn = device.switch === 'on'
   const intensityClass = powerIntensityClass(device.power, maxWatts)
 
   return (
-    <li className="flex items-start gap-3 py-2.5">
+    <li
+      className={cn(
+        'flex items-start gap-3 py-2.5',
+        anomaly && 'border-l-2 border-l-amber-500 pl-2',
+      )}
+    >
       {/* On/off indicator — paired with text label so colour is not the sole signal */}
       <span
         aria-label={isOn ? 'On' : 'Off'}
@@ -46,8 +54,13 @@ function DeviceRow({ device, maxWatts }: DeviceRowProps) {
 
       {/* Device info */}
       <div className="min-w-0 flex-1">
-        <p className="text-heading text-sm font-medium leading-snug">
-          {device.label}
+        <p className="text-sm font-medium leading-snug">
+          <Link
+            to={'/devices/' + device.id}
+            className="text-fairy-400 hover:underline"
+          >
+            {device.label}
+          </Link>
         </p>
         {device.room_name && (
           <p className="text-caption text-xs leading-snug">
@@ -63,9 +76,16 @@ function DeviceRow({ device, maxWatts }: DeviceRowProps) {
 
       {/* Power value — colour reinforces scale but watt number is always visible */}
       <div className="shrink-0 text-right">
-        <span className={cn('text-sm font-semibold tabular-nums', intensityClass)}>
-          {device.power.toFixed(1)} W
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={cn('text-sm font-semibold tabular-nums', intensityClass)}>
+            {device.power.toFixed(1)} W
+          </span>
+          {anomaly && (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+              {Math.round(anomaly.percentAbove)}% above normal
+            </span>
+          )}
+        </div>
         <span className="sr-only"> watts, device is {isOn ? 'on' : 'off'}</span>
       </div>
     </li>
@@ -76,15 +96,21 @@ function DeviceRow({ device, maxWatts }: DeviceRowProps) {
 
 interface EnergyCardProps {
   power: PowerDevice[]
+  insights?: EnergyInsights | null
 }
 
-export default function EnergyCard({ power }: EnergyCardProps) {
+export default function EnergyCard({ power, insights }: EnergyCardProps) {
   const [chartExpanded, setChartExpanded] = useState(false)
 
   // Sort highest power first
   const sorted = [...power].sort((a, b) => b.power - a.power)
   const maxWatts = sorted[0]?.power ?? 0
   const totalWatts = power.reduce((sum, d) => sum + d.power, 0)
+
+  // Build a fast lookup: device id → anomaly entry
+  const anomalyMap = new Map(
+    (insights?.deviceAnomalies ?? []).map(a => [a.deviceId, a]),
+  )
 
   // Track trend for the highest-drawing device
   const topDevice = sorted[0]
@@ -126,12 +152,24 @@ export default function EnergyCard({ power }: EnergyCardProps) {
       </header>
 
       {/* Total */}
-      <p className="text-caption mb-4 text-sm">
-        <span className="text-heading text-2xl font-semibold tabular-nums">
-          {totalWatts.toFixed(1)}
-        </span>
-        {' '}W total across {power.length} device{power.length !== 1 ? 's' : ''}
-      </p>
+      <div className="mb-4">
+        <p className="text-caption text-sm">
+          <span className="text-heading text-2xl font-semibold tabular-nums">
+            {totalWatts.toFixed(1)}
+          </span>
+          {' '}W total across {power.length} device{power.length !== 1 ? 's' : ''}
+          {insights?.overUnderPercent != null && (
+            <span className="ml-2 inline-flex align-middle">
+              <OverUnderBadge percent={insights.overUnderPercent} />
+            </span>
+          )}
+        </p>
+        {insights?.dailyCostEstimate != null && (
+          <p className="text-caption mt-0.5 text-xs">
+            Estimated daily cost: £{insights.dailyCostEstimate.toFixed(2)}
+          </p>
+        )}
+      </div>
 
       {/* Device list */}
       <ul
@@ -141,9 +179,28 @@ export default function EnergyCard({ power }: EnergyCardProps) {
         style={{ borderColor: 'var(--border-primary)' }}
       >
         {sorted.map(device => (
-          <DeviceRow key={device.id} device={device} maxWatts={maxWatts} />
+          <DeviceRow
+            key={device.id}
+            device={device}
+            maxWatts={maxWatts}
+            anomaly={anomalyMap.get(device.id) ?? null}
+          />
         ))}
       </ul>
+
+      {/* Peak hours callout */}
+      {insights?.peakHours && insights.peakHours.length > 0 && (
+        <p className="text-caption mt-3 text-xs">
+          Peak usage hours:{' '}
+          {insights.peakHours
+            .map(({ hour }) => {
+              const period = hour < 12 ? 'am' : 'pm'
+              const displayHour = hour % 12 === 0 ? 12 : hour % 12
+              return `${displayHour} ${period}`
+            })
+            .join(', ')}
+        </p>
+      )}
 
       {/* Chart section */}
       <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--border-primary)' }}>

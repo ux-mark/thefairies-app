@@ -289,6 +289,71 @@ export interface DashboardSummary {
     wind_speed: number
   } | null
   nightStatus: NightStatus
+  insights: InsightsData | null
+}
+
+export interface InsightsData {
+  energy: EnergyInsights | null
+  temperature: TemperatureInsights | null
+  lux: LuxInsights | null
+  battery: BatteryInsights | null
+  attention: AttentionItem[]
+}
+
+export interface EnergyInsights {
+  totalWatts: number
+  averageWattsThisHour: number | null
+  overUnderPercent: number | null
+  dailyCostEstimate: number | null
+  energyRate: number
+  dailyKwhHistory: Array<{ day: string; totalKwh: number }>
+  peakHours: Array<{ hour: number; avgWatts: number }>
+  deviceAnomalies: Array<{
+    deviceId: number
+    label: string
+    currentWatts: number
+    averageWatts: number
+    percentAbove: number
+  }>
+}
+
+export interface TemperatureInsights {
+  houseAvgTemp: number
+  houseAvgTemp30d: number | null
+  overUnderTemp: number | null
+  trend: 'warming' | 'cooling' | 'stable'
+  roomOutliers: Array<{ room: string; temp: number; deviation: number }>
+  indoorOutdoorDelta: number | null
+}
+
+export interface LuxInsights {
+  houseAvgLux: number
+  houseAvgLuxThisHour: number | null
+  overUnderLuxPercent: number | null
+  brightnessLevel: 'dark' | 'dim' | 'moderate' | 'bright' | 'very bright'
+  roomRanking: Array<{ room: string; lux: number }>
+}
+
+export interface BatteryInsights {
+  fleetHealth: { healthy: number; low: number; critical: number; total: number }
+  deviceDrainRates: Array<{
+    deviceId: number
+    label: string
+    drainPerDay: number | null
+    predictedDaysRemaining: number | null
+    isAnomalous: boolean
+  }>
+  worstDevice: { label: string; predictedDaysRemaining: number | null } | null
+}
+
+export interface AttentionItem {
+  id: string
+  severity: 'critical' | 'warning' | 'info'
+  category: 'battery' | 'energy' | 'temperature'
+  title: string
+  description: string
+  deviceId: number | null
+  deviceLabel: string | null
 }
 
 export interface HistoryPoint {

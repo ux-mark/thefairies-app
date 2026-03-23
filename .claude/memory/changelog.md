@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-03-23 — Aggregate insights, trend analysis, and attention CTAs
+- Insights engine: server-side computation of energy, temperature, lux, and battery analytics with 10-minute cache
+- Energy: total watts, over/under comparison to 7-day hourly average, daily cost estimate, device anomaly detection, peak hours
+- Temperature: house average, 30-day comparison, warming/cooling trend, room outliers, indoor/outdoor delta
+- Lux: house average brightness, level classification, comparison to normal for this hour, room ranking
+- Battery: fleet health score, per-device drain rates, predicted days remaining, anomalous drain detection
+- Attention bar: prioritised alerts (critical/warning/info) with CTAs linking to device detail pages
+- Home summary strip: 4 stat pills (energy, temperature, brightness, battery fleet) with over/under badges and trend arrows
+- OverUnderBadge reusable component for percentage comparisons
+- Enhanced EnergyCard: anomaly highlights, device links, peak hours, cost estimate
+- Enhanced BatteryCard: fleet health, drain rates, predicted replacement, anomalous drain highlights
+- Enhanced EnvironmentCard: house average with trend arrow, room outlier highlights, lux section with brightness ranking
+- Energy rate preference in Settings for cost estimates
+- Files: server/src/lib/insights-engine.ts, server/src/routes/dashboard.ts, client/src/lib/api.ts, client/src/pages/DashboardPage.tsx, client/src/components/dashboard/*.tsx, client/src/pages/SettingsPage.tsx
+
 ## 2026-03-23 — Dashboard, device insights, and historical data infrastructure
 - New "Insights" page at /dashboard with 4 dashboard cards: Energy, Battery, Environment, Sun and Mode
 - Historical data infrastructure: device_history table, 10-minute snapshot collector, indefinite retention

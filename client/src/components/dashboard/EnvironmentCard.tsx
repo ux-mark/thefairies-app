@@ -1,15 +1,18 @@
-import { Thermometer, Cloud, Droplets, Wind } from 'lucide-react'
+import { Thermometer, Cloud, Droplets, Wind, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
-import type { DashboardSummary } from '@/lib/api'
+import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
+import type { DashboardSummary, TemperatureInsights, LuxInsights } from '@/lib/api'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface EnvironmentCardProps {
   weather: DashboardSummary['weather']
   rooms: DashboardSummary['rooms']
+  tempInsights?: TemperatureInsights | null
+  luxInsights?: LuxInsights | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -37,6 +40,12 @@ function toDisplay(celsius: number, unit: 'C' | 'F'): number {
 function formatTemp(celsius: number, unit: 'C' | 'F'): string {
   const val = toDisplay(celsius, unit)
   return `${val}\u00b0${unit}`
+}
+
+/** Capitalise only the first character of a string. */
+function capitaliseFirst(str: string): string {
+  if (!str) return str
+  return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
 // ── Outdoor weather section ───────────────────────────────────────────────────
@@ -96,6 +105,77 @@ function OutdoorSection({
   )
 }
 
+// ── Temperature insights summary ──────────────────────────────────────────────
+
+function TempInsightsSummary({
+  tempInsights,
+  unit,
+}: {
+  tempInsights: TemperatureInsights
+  unit: 'C' | 'F'
+}) {
+  const avgDisplay = toDisplay(tempInsights.houseAvgTemp, unit)
+
+  const overUnderLabel =
+    tempInsights.overUnderTemp !== null
+      ? `${Math.abs(Math.round(toDisplay(tempInsights.overUnderTemp, unit) - toDisplay(0, unit)))}° ${tempInsights.overUnderTemp > 0 ? 'warmer' : 'cooler'} than usual`
+      : null
+
+  const deltaText =
+    tempInsights.indoorOutdoorDelta !== null
+      ? (() => {
+          const delta = tempInsights.indoorOutdoorDelta
+          const absVal = Math.abs(Math.round(toDisplay(Math.abs(delta), unit) - toDisplay(0, unit)))
+          const direction = delta >= 0 ? 'warmer' : 'cooler'
+          return `${absVal}° ${direction} inside`
+        })()
+      : null
+
+  return (
+    <div className="mb-3">
+      {/* House average + trend + over/under badge */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-heading text-lg font-semibold tabular-nums">
+          House average: {avgDisplay}°
+        </span>
+
+        {/* Trend arrow — colour paired with sr-only text */}
+        {tempInsights.trend === 'warming' && (
+          <span className="inline-flex items-center gap-0.5">
+            <ArrowUp className="h-4 w-4 text-red-400" aria-hidden="true" />
+            <span className="sr-only">Warming trend</span>
+          </span>
+        )}
+        {tempInsights.trend === 'cooling' && (
+          <span className="inline-flex items-center gap-0.5">
+            <ArrowDown className="h-4 w-4 text-blue-400" aria-hidden="true" />
+            <span className="sr-only">Cooling trend</span>
+          </span>
+        )}
+        {tempInsights.trend === 'stable' && (
+          <span className="inline-flex items-center gap-0.5">
+            <Minus className="text-caption h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Stable trend</span>
+          </span>
+        )}
+
+        {tempInsights.overUnderTemp !== null && overUnderLabel && (
+          <OverUnderBadge
+            percent={tempInsights.overUnderTemp}
+            label={overUnderLabel}
+            size="sm"
+          />
+        )}
+      </div>
+
+      {/* Indoor/outdoor delta */}
+      {deltaText && (
+        <p className="text-caption mt-1 text-xs">{deltaText}</p>
+      )}
+    </div>
+  )
+}
+
 // ── Indoor rooms section ──────────────────────────────────────────────────────
 
 type RoomEntry = DashboardSummary['rooms'][number]
@@ -103,44 +183,129 @@ type RoomEntry = DashboardSummary['rooms'][number]
 function IndoorSection({
   rooms,
   unit,
+  tempInsights,
 }: {
   rooms: RoomEntry[]
   unit: 'C' | 'F'
+  tempInsights?: TemperatureInsights | null
 }) {
   const roomsWithTemp = rooms.filter(r => r.temperature !== null)
 
   if (roomsWithTemp.length === 0) return null
 
+  // Build a lookup map of outliers by room name for O(1) access
+  const outlierMap = new Map(
+    (tempInsights?.roomOutliers ?? []).map(o => [o.room, o]),
+  )
+
   return (
     <div className="mb-5">
       <h3 className="text-caption mb-2 text-xs font-medium">Indoors</h3>
+
+      {tempInsights && (
+        <TempInsightsSummary tempInsights={tempInsights} unit={unit} />
+      )}
+
       <ul
         role="list"
         aria-label="Room temperatures"
         className="divide-y"
         style={{ borderColor: 'var(--border-primary)' }}
       >
-        {roomsWithTemp.map(room => (
-          <li
-            key={room.name}
-            className="flex items-center justify-between gap-3 py-2.5"
-          >
-            <span className="text-heading text-sm font-medium leading-snug">
-              {room.name}
-            </span>
-            <div className="shrink-0 text-right">
-              <span className="text-heading text-sm font-semibold tabular-nums">
-                {formatTemp(room.temperature!, unit)}
-              </span>
-              {room.lux !== null && (
-                <p className="text-caption text-xs leading-snug">
-                  {room.lux} lux
-                </p>
+        {roomsWithTemp.map(room => {
+          const outlier = outlierMap.get(room.name)
+          const isWarmer = outlier ? outlier.deviation > 0 : false
+          const highlightClass = outlier
+            ? isWarmer
+              ? 'bg-amber-500/5 rounded-lg -mx-2 px-2'
+              : 'bg-blue-500/5 rounded-lg -mx-2 px-2'
+            : ''
+
+          return (
+            <li
+              key={room.name}
+              className={cn(
+                'flex items-center justify-between gap-3 py-2.5',
+                highlightClass,
               )}
-            </div>
-          </li>
-        ))}
+            >
+              <span className="text-heading text-sm font-medium leading-snug">
+                {room.name}
+              </span>
+              <div className="shrink-0 text-right">
+                <span className="text-heading text-sm font-semibold tabular-nums">
+                  {formatTemp(room.temperature!, unit)}
+                </span>
+                {outlier && (
+                  <p
+                    className={cn(
+                      'text-xs leading-snug',
+                      isWarmer ? 'text-amber-400' : 'text-blue-400',
+                    )}
+                  >
+                    {Math.abs(Math.round(toDisplay(Math.abs(outlier.deviation), unit) - toDisplay(0, unit)))}°{' '}
+                    {isWarmer ? 'warmer' : 'cooler'} than average
+                  </p>
+                )}
+                {!outlier && room.lux !== null && (
+                  <p className="text-caption text-xs leading-snug">
+                    {room.lux} lux
+                  </p>
+                )}
+              </div>
+            </li>
+          )
+        })}
       </ul>
+    </div>
+  )
+}
+
+// ── Lux section ───────────────────────────────────────────────────────────────
+
+function LuxSection({ luxInsights }: { luxInsights: LuxInsights }) {
+  // Sort ranking brightest to darkest (defensive copy)
+  const ranked = [...luxInsights.roomRanking].sort((a, b) => b.lux - a.lux)
+
+  return (
+    <div className="mb-5">
+      <h3 className="text-caption mb-2 text-xs font-medium">Brightness</h3>
+
+      {/* Main brightness summary */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-heading text-base font-semibold">
+          {capitaliseFirst(luxInsights.brightnessLevel)}
+        </span>
+        <span className="text-caption text-xs">
+          {luxInsights.houseAvgLux} lux average
+        </span>
+        <OverUnderBadge
+          percent={luxInsights.overUnderLuxPercent}
+          size="sm"
+        />
+      </div>
+
+      {/* Room brightness ranking */}
+      {ranked.length > 0 && (
+        <ul
+          role="list"
+          aria-label="Room brightness ranking"
+          className="divide-y"
+          style={{ borderColor: 'var(--border-primary)' }}
+        >
+          {ranked.map(entry => (
+            <li
+              key={entry.room}
+              className="flex items-center justify-between gap-3 py-2"
+            >
+              <span className="text-body text-sm">{entry.room}</span>
+              <span className="text-caption text-xs tabular-nums">
+                {entry.lux} lux
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -173,7 +338,12 @@ function TempChartSection({ roomName }: { roomName: string }) {
 
 // ── EnvironmentCard ───────────────────────────────────────────────────────────
 
-export default function EnvironmentCard({ weather, rooms }: EnvironmentCardProps) {
+export default function EnvironmentCard({
+  weather,
+  rooms,
+  tempInsights,
+  luxInsights,
+}: EnvironmentCardProps) {
   const unit = getTempUnit()
 
   const roomsWithTemp = rooms.filter(r => r.temperature !== null)
@@ -234,7 +404,15 @@ export default function EnvironmentCard({ weather, rooms }: EnvironmentCardProps
 
       {hasWeather && <OutdoorSection weather={weather!} unit={unit} />}
 
-      {hasIndoor && <IndoorSection rooms={rooms} unit={unit} />}
+      {hasIndoor && (
+        <IndoorSection
+          rooms={rooms}
+          unit={unit}
+          tempInsights={tempInsights}
+        />
+      )}
+
+      {luxInsights && <LuxSection luxInsights={luxInsights} />}
 
       {hasIndoor && chartRoom && (
         <TempChartSection roomName={chartRoom.name} />

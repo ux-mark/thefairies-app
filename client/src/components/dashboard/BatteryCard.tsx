@@ -1,10 +1,11 @@
 import { useState, useId } from 'react'
+import { Link } from 'react-router-dom'
 import { Battery, AlertTriangle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
-import type { BatteryDevice } from '@/lib/api'
+import type { BatteryDevice, BatteryInsights } from '@/lib/api'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,23 +37,66 @@ function batteryStatusClass(status: BatteryDevice['status']): string {
   }
 }
 
+// ── Fleet health summary ──────────────────────────────────────────────────────
+
+interface FleetHealthSummaryProps {
+  fleetHealth: BatteryInsights['fleetHealth']
+}
+
+function FleetHealthSummary({ fleetHealth }: FleetHealthSummaryProps) {
+  const counts: Array<{ label: string; value: number; className: string }> = [
+    { label: 'healthy', value: fleetHealth.healthy, className: 'text-green-400' },
+    { label: 'low', value: fleetHealth.low, className: 'text-yellow-400' },
+    { label: 'critical', value: fleetHealth.critical, className: 'text-red-400' },
+  ].filter(entry => entry.value > 0)
+
+  if (counts.length === 0) {
+    return (
+      <p className="text-sm font-medium text-green-400">
+        All {fleetHealth.total} {fleetHealth.total === 1 ? 'battery' : 'batteries'} are healthy
+      </p>
+    )
+  }
+
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium">
+      {counts.map((entry, i) => (
+        <span key={entry.label} className={entry.className}>
+          {entry.value} {entry.label}
+          {i < counts.length - 1 && <span className="sr-only">,</span>}
+        </span>
+      ))}
+    </p>
+  )
+}
+
 // ── Battery device row ────────────────────────────────────────────────────────
+
+type DrainRateEntry = BatteryInsights['deviceDrainRates'][number]
 
 interface DeviceRowProps {
   device: BatteryDevice
+  drainRate?: DrainRateEntry
 }
 
-function BatteryDeviceRow({ device }: DeviceRowProps) {
+function BatteryDeviceRow({ device, drainRate }: DeviceRowProps) {
   const isCritical = device.status === 'critical'
   const level = device.battery ?? 0
+  const isAnomalous = drainRate?.isAnomalous === true
+
+  // Build a descriptive aria-label that includes drain info when available
+  const drainAriaDetail = drainRate?.drainPerDay != null
+    ? `, draining ${drainRate.drainPerDay.toFixed(1)}% per day${drainRate.predictedDaysRemaining != null ? `, approximately ${drainRate.predictedDaysRemaining} days remaining` : ''}`
+    : ''
 
   return (
     <li
       className={cn(
         'rounded-lg px-3 py-2.5',
         isCritical ? 'bg-red-500/8 ring-1 ring-red-500/20' : '',
+        isAnomalous ? 'border-l-2 border-l-amber-500' : '',
       )}
-      aria-label={`${device.label}: ${level}% battery, status ${batteryStatusLabel(device.status)}`}
+      aria-label={`${device.label}: ${level}% battery, status ${batteryStatusLabel(device.status)}${drainAriaDetail}`}
     >
       <div className="flex items-center gap-3">
         {/* Critical warning icon — paired with text badge so icon is not the sole indicator */}
@@ -63,10 +107,45 @@ function BatteryDeviceRow({ device }: DeviceRowProps) {
           />
         )}
 
-        {/* Label */}
-        <span className={cn('flex-1 text-sm font-medium', isCritical ? 'text-red-300' : 'text-heading')}>
-          {device.label}
-        </span>
+        {/* Label column — device name as link + drain sub-text */}
+        <div className="flex-1 min-w-0">
+          <Link
+            to={`/devices/${device.id}`}
+            className={cn(
+              'text-sm font-medium text-fairy-400 hover:underline',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+              isCritical ? 'text-red-300 hover:text-red-200' : '',
+            )}
+          >
+            {device.label}
+          </Link>
+
+          {/* Drain rate sub-text */}
+          {drainRate != null && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              {drainRate.drainPerDay != null && (
+                <span className="text-caption text-xs">
+                  {drainRate.drainPerDay.toFixed(1)}%/day
+                </span>
+              )}
+              {drainRate.predictedDaysRemaining != null && (
+                <span className="text-caption text-xs">
+                  ~{drainRate.predictedDaysRemaining} days remaining
+                </span>
+              )}
+              {isCritical && (
+                <span className="text-xs font-medium text-red-400">
+                  Replace soon
+                </span>
+              )}
+              {isAnomalous && (
+                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                  Draining faster than normal
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Percentage — always visible text, not just colour */}
         <span className={cn('shrink-0 text-sm font-semibold tabular-nums', batteryTextClass(level))}>
@@ -103,9 +182,10 @@ function BatteryDeviceRow({ device }: DeviceRowProps) {
 
 interface BatteryCardProps {
   battery: BatteryDevice[]
+  insights?: BatteryInsights | null
 }
 
-export default function BatteryCard({ battery }: BatteryCardProps) {
+export default function BatteryCard({ battery, insights }: BatteryCardProps) {
   const selectId = useId()
 
   // Sort lowest battery first (worst cases at the top)
@@ -157,9 +237,13 @@ export default function BatteryCard({ battery }: BatteryCardProps) {
         </header>
 
         <div className="flex items-center justify-between gap-3 rounded-lg bg-green-500/8 px-4 py-3 ring-1 ring-green-500/20">
-          <p className="text-sm font-medium text-green-400">
-            All {battery.length} {battery.length === 1 ? 'battery' : 'batteries'} are healthy
-          </p>
+          {insights ? (
+            <FleetHealthSummary fleetHealth={insights.fleetHealth} />
+          ) : (
+            <p className="text-sm font-medium text-green-400">
+              All {battery.length} {battery.length === 1 ? 'battery' : 'batteries'} are healthy
+            </p>
+          )}
           <button
             type="button"
             onClick={() => setListExpanded(true)}
@@ -201,15 +285,25 @@ export default function BatteryCard({ battery }: BatteryCardProps) {
         )}
       </header>
 
+      {/* Fleet health summary (insights-aware) */}
+      {insights && (
+        <div className="mb-3">
+          <FleetHealthSummary fleetHealth={insights.fleetHealth} />
+        </div>
+      )}
+
       {/* Device list */}
       <ul
         role="list"
         aria-label="Battery-powered devices"
         className="space-y-1.5"
       >
-        {sorted.map(device => (
-          <BatteryDeviceRow key={device.id} device={device} />
-        ))}
+        {sorted.map(device => {
+          const drainRate = insights?.deviceDrainRates.find(r => r.label === device.label)
+          return (
+            <BatteryDeviceRow key={device.id} device={device} drainRate={drainRate} />
+          )
+        })}
       </ul>
 
       {/* Chart section */}
