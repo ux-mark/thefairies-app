@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { getAll, getOne, run } from '../db/index.js'
 
+
 const router = Router()
 
 interface RoomRow {
@@ -10,13 +11,9 @@ interface RoomRow {
   parent_room: string | null
   auto: number
   timer: number
-  sensors: string
   tags: string
   current_scene: string | null
   last_active: string | null
-  temperature: number | null
-  lux: number | null
-  mode_changed: number
   created_at: string
   updated_at: string
 }
@@ -34,24 +31,37 @@ interface LightRoomRow {
 }
 
 function parseRoom(row: RoomRow) {
-  let sensors: unknown = []
   let tags: unknown = []
-  try { sensors = JSON.parse(row.sensors) } catch { sensors = [] }
   try { tags = JSON.parse(row.tags) } catch { tags = [] }
+
+  // Get sensors from device_rooms table
+  const sensorRows = getAll<{ device_label: string }>(
+    "SELECT device_label FROM device_rooms WHERE room_name = ? AND device_type IN ('motion', 'sensor')",
+    [row.name],
+  )
+
+  // Get temperature and lux from sensor device attributes
+  const sensorReading = getOne<{ temperature: number | null; lux: number | null }>(
+    `SELECT CAST(json_extract(h.attributes, '$.temperature') AS REAL) as temperature,
+      CAST(json_extract(h.attributes, '$.illuminance') AS REAL) as lux
+     FROM device_rooms dr
+     JOIN hub_devices h ON h.label = dr.device_label
+     WHERE dr.room_name = ? AND dr.device_type IN ('motion', 'sensor')
+     AND (json_extract(h.attributes, '$.temperature') IS NOT NULL
+       OR json_extract(h.attributes, '$.illuminance') IS NOT NULL)
+     LIMIT 1`,
+    [row.name],
+  )
+
   return {
     ...row,
-    sensors: Array.isArray(sensors) ? sensors : [],
+    sensors: sensorRows.map(s => ({ name: s.device_label })),
     tags: Array.isArray(tags) ? tags : [],
     auto: Boolean(row.auto),
-    mode_changed: Boolean(row.mode_changed),
+    temperature: sensorReading?.temperature ?? null,
+    lux: sensorReading?.lux ?? null,
   }
 }
-
-const sensorSchema = z.object({
-  name: z.string(),
-  priority_threshold: z.number().optional(),
-  priorityThreshold: z.number().optional(), // legacy format
-}).passthrough()
 
 const createRoomSchema = z.object({
   name: z.string().min(1),
@@ -59,7 +69,6 @@ const createRoomSchema = z.object({
   parent_room: z.string().nullable().optional(),
   auto: z.boolean().optional(),
   timer: z.number().optional(),
-  sensors: z.array(sensorSchema).optional(),
   tags: z.array(z.string()).optional(),
 })
 
@@ -68,13 +77,9 @@ const updateRoomSchema = z.object({
   parent_room: z.string().nullable().optional(),
   auto: z.boolean().optional(),
   timer: z.number().optional(),
-  sensors: z.array(sensorSchema).optional(),
   tags: z.array(z.string()).optional(),
   current_scene: z.string().nullable().optional(),
   last_active: z.string().nullable().optional(),
-  temperature: z.number().nullable().optional(),
-  lux: z.number().nullable().optional(),
-  mode_changed: z.boolean().optional(),
 })
 
 // GET / — list all rooms
@@ -113,15 +118,14 @@ router.post('/', (req: Request, res: Response) => {
     console.log('[rooms POST] body:', JSON.stringify(req.body))
     const body = createRoomSchema.parse(req.body)
     run(
-      `INSERT INTO rooms (name, display_order, parent_room, auto, timer, sensors, tags)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO rooms (name, display_order, parent_room, auto, timer, tags)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         body.name,
         body.display_order ?? 0,
         body.parent_room ?? null,
         body.auto !== undefined ? Number(body.auto) : 1,
         body.timer ?? 15,
-        JSON.stringify(body.sensors ?? []),
         JSON.stringify(body.tags ?? []),
       ],
     )
@@ -156,13 +160,9 @@ router.put('/:name', (req: Request, res: Response) => {
     if (body.parent_room !== undefined) { fields.push('parent_room = ?'); values.push(body.parent_room) }
     if (body.auto !== undefined) { fields.push('auto = ?'); values.push(Number(body.auto)) }
     if (body.timer !== undefined) { fields.push('timer = ?'); values.push(body.timer) }
-    if (body.sensors !== undefined) { fields.push('sensors = ?'); values.push(JSON.stringify(body.sensors)) }
     if (body.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(body.tags)) }
     if (body.current_scene !== undefined) { fields.push('current_scene = ?'); values.push(body.current_scene) }
     if (body.last_active !== undefined) { fields.push('last_active = ?'); values.push(body.last_active) }
-    if (body.temperature !== undefined) { fields.push('temperature = ?'); values.push(body.temperature) }
-    if (body.lux !== undefined) { fields.push('lux = ?'); values.push(body.lux) }
-    if (body.mode_changed !== undefined) { fields.push('mode_changed = ?'); values.push(Number(body.mode_changed)) }
 
     if (fields.length > 0) {
       fields.push("updated_at = datetime('now')")

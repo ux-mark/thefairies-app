@@ -10,9 +10,21 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // Only precache the HTML entry and CSS — JS chunks use runtime caching
+        // to avoid preload warnings for lazy-loaded modules
+        globPatterns: ['**/*.{css,ico,png,svg,webmanifest}', 'index.html'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/.*\.js$/,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'js-chunks' },
+          },
+        ],
+      },
       manifest: {
-        name: 'The Fairies',
-        short_name: 'Fairies',
+        name: 'Home Fairy',
+        short_name: 'Home Fairy',
         theme_color: '#10b981',
         background_color: '#0f172a',
         display: 'standalone',
@@ -23,6 +35,9 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    modulePreload: false,
+  },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

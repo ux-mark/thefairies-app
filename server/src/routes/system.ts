@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { getAll, getOne, run, db } from '../db/index.js'
+import { notificationService } from '../lib/notification-service.js'
 import { getCurrentWeather } from '../lib/weather-client.js'
 import { getSunTimes, getCurrentSunPhase } from '../lib/sun-tracker.js'
 import { timerManager } from '../lib/timer-manager.js'
@@ -16,6 +17,9 @@ import { weatherIndicator, WEATHER_COLORS } from '../lib/weather-indicator.js'
 import { motionHandler } from '../lib/motion-handler.js'
 
 const router = Router()
+
+// Lazy-load time-trigger-scheduler once it exists
+import { timeTriggerScheduler } from '../lib/time-trigger-scheduler.js'
 
 interface CurrentStateRow {
   key: string
@@ -43,13 +47,7 @@ router.get('/current', (_req: Request, res: Response) => {
     const modeRow = getOne<CurrentStateRow>(
       "SELECT * FROM current_state WHERE key = 'mode'",
     )
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
+    const allModes = getAllModeNames()
 
     res.json({
       mode: modeRow?.value ?? 'Evening',
@@ -255,17 +253,80 @@ router.post('/timers/cancel-all', (_req: Request, res: Response) => {
   }
 })
 
-// GET /modes — get all modes
+interface ModeTriggerRow {
+  id: number
+  mode_name: string
+  trigger_type: 'sun' | 'time'
+  sun_event: string | null
+  trigger_time: string | null
+  trigger_days: string | null
+  priority: number
+  enabled: number
+}
+
+const modeRenameSchema = z.object({
+  name: z.string().min(1).max(50),
+})
+
+const triggerSchema = z.object({
+  type: z.enum(['sun', 'time']),
+  sunEvent: z.string().optional(),
+  time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  days: z.array(z.number().min(0).max(6)).min(1, 'At least one day is required').optional(),
+  priority: z.number().optional(),
+  enabled: z.boolean().optional(),
+})
+
+function upsertState(key: string, value: string): void {
+  run(
+    `INSERT INTO current_state (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [key, value],
+  )
+}
+
+function getAllModeNames(): string[] {
+  return getAll<{ name: string }>('SELECT name FROM modes ORDER BY display_order').map(m => m.name)
+}
+
+function parseTrigger(row: ModeTriggerRow) {
+  return {
+    id: row.id,
+    type: row.trigger_type,
+    ...(row.sun_event ? { sunEvent: row.sun_event } : {}),
+    ...(row.trigger_time ? { time: row.trigger_time } : {}),
+    days: (() => {
+      try { return row.trigger_days ? JSON.parse(row.trigger_days) : undefined } catch { return undefined }
+    })(),
+    priority: row.priority,
+    enabled: row.enabled === 1,
+  }
+}
+
+// GET /modes — get all modes with their triggers
 router.get('/modes', (_req: Request, res: Response) => {
   try {
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
+    const allModes = getAllModeNames()
+    const sleepRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
     )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
-    res.json(allModes)
+    const sleepModeName = sleepRow?.value ?? null
+
+    const triggers = getAll<ModeTriggerRow>('SELECT * FROM mode_triggers ORDER BY priority DESC')
+    const triggersByMode: Record<string, ModeTriggerRow[]> = {}
+    for (const t of triggers) {
+      if (!triggersByMode[t.mode_name]) triggersByMode[t.mode_name] = []
+      triggersByMode[t.mode_name].push(t)
+    }
+
+    const result = allModes.map(name => ({
+      name,
+      triggers: (triggersByMode[name] ?? []).map(parseTrigger),
+      isSleepMode: name === sleepModeName,
+    }))
+
+    res.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })
@@ -276,27 +337,16 @@ router.get('/modes', (_req: Request, res: Response) => {
 router.post('/modes', (req: Request, res: Response) => {
   try {
     const body = modeSchema.parse(req.body)
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
+    const allModes = getAllModeNames()
 
     if (allModes.includes(body.mode)) {
       res.status(409).json({ error: 'Mode already exists' })
       return
     }
 
-    allModes.push(body.mode)
-    run(
-      `INSERT INTO current_state (key, value, updated_at)
-       VALUES ('all_modes', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      [JSON.stringify(allModes)],
-    )
-    res.json(allModes)
+    const maxOrder = getOne<{ m: number | null }>('SELECT MAX(display_order) as m FROM modes')
+    run('INSERT INTO modes (name, display_order) VALUES (?, ?)', [body.mode, (maxOrder?.m ?? 0) + 1])
+    res.json(getAllModeNames())
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: err.errors })
@@ -307,32 +357,332 @@ router.post('/modes', (req: Request, res: Response) => {
   }
 })
 
-// DELETE /modes/:mode — remove a mode
+// PUT /modes/:mode — rename a mode
+router.put('/modes/:mode', (req: Request, res: Response) => {
+  try {
+    const oldName = decodeURIComponent(String(req.params.mode))
+    const body = modeRenameSchema.parse(req.body)
+    const newName = body.name
+
+    if (oldName === newName) {
+      res.status(400).json({ error: 'New name is the same as current name' })
+      return
+    }
+
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [oldName])
+    if (!modeExists) {
+      res.status(404).json({ error: 'Mode not found' })
+      return
+    }
+    const newNameExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [newName])
+    if (newNameExists) {
+      res.status(409).json({ error: 'A mode with that name already exists' })
+      return
+    }
+
+    // Count scenes that will be affected (for response metadata)
+    const affectedSceneCount = getOne<{ cnt: number }>(
+      'SELECT COUNT(DISTINCT scene_name) as cnt FROM scene_modes WHERE mode_name = ?',
+      [oldName],
+    )
+    const updatedScenes = affectedSceneCount?.cnt ?? 0
+
+    const renameTransaction = db.transaction(() => {
+      // 1. Rename in modes table — CASCADE propagates to mode_triggers and scene_modes
+      run('UPDATE modes SET name = ? WHERE name = ?', [newName, oldName])
+
+      // 2. If current mode matches old name, update it
+      const currentModeRow = getOne<CurrentStateRow>(
+        "SELECT value FROM current_state WHERE key = 'mode'",
+      )
+      if (currentModeRow?.value === oldName) {
+        upsertState('mode', newName)
+      }
+
+      // 3. If pref_night_wake_mode matches, update it
+      const wakeModeRow = getOne<CurrentStateRow>(
+        "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+      )
+      if (wakeModeRow?.value === oldName) {
+        upsertState('pref_night_wake_mode', newName)
+      }
+
+      // 4. If sleep_mode_name matches, update it
+      const sleepModeRow = getOne<CurrentStateRow>(
+        "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
+      )
+      if (sleepModeRow?.value === oldName) {
+        upsertState('sleep_mode_name', newName)
+      }
+    })
+
+    renameTransaction()
+
+    res.json({ name: newName, updatedScenes })
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: err.errors })
+      return
+    }
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// DELETE /modes/:mode — remove a mode with cascade
 router.delete('/modes/:mode', (req: Request, res: Response) => {
   try {
     const modeName = decodeURIComponent(String(req.params.mode))
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
 
-    const idx = allModes.indexOf(modeName)
-    if (idx === -1) {
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [modeName])
+    if (!modeExists) {
       res.status(404).json({ error: 'Mode not found' })
       return
     }
 
-    allModes.splice(idx, 1)
-    run(
-      `INSERT INTO current_state (key, value, updated_at)
-       VALUES ('all_modes', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      [JSON.stringify(allModes)],
+    // Count affected scenes BEFORE delete for the response
+    const affectedSceneCount = getOne<{ cnt: number }>(
+      'SELECT COUNT(DISTINCT scene_name) as cnt FROM scene_modes WHERE mode_name = ?',
+      [modeName],
     )
-    res.json(allModes)
+    const affectedScenes = affectedSceneCount?.cnt ?? 0
+
+    const deleteTransaction = db.transaction(() => {
+      // 1. Delete from modes table — CASCADE propagates to mode_triggers and scene_modes
+      run('DELETE FROM modes WHERE name = ?', [modeName])
+
+      // 2. If current mode is the deleted one, switch to first remaining (or '')
+      const currentModeRow = getOne<CurrentStateRow>(
+        "SELECT value FROM current_state WHERE key = 'mode'",
+      )
+      if (currentModeRow?.value === modeName) {
+        const firstRemaining = getOne<{ name: string }>('SELECT name FROM modes ORDER BY display_order LIMIT 1')
+        upsertState('mode', firstRemaining?.name ?? '')
+      }
+
+      // 3. If pref_night_wake_mode matches, clear it
+      const wakeModeRow = getOne<CurrentStateRow>(
+        "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+      )
+      if (wakeModeRow?.value === modeName) {
+        run("DELETE FROM current_state WHERE key = 'pref_night_wake_mode'")
+      }
+
+      // 4. If sleep_mode_name matches, clear it
+      const sleepModeRow = getOne<CurrentStateRow>(
+        "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
+      )
+      if (sleepModeRow?.value === modeName) {
+        run("DELETE FROM current_state WHERE key = 'sleep_mode_name'")
+      }
+    })
+
+    deleteTransaction()
+
+    res.json({ modes: getAllModeNames(), affectedScenes })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// GET /modes/:mode/dependencies — what depends on this mode
+router.get('/modes/:mode/dependencies', (req: Request, res: Response) => {
+  try {
+    const modeName = decodeURIComponent(String(req.params.mode))
+
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [modeName])
+    if (!modeExists) {
+      res.status(404).json({ error: 'Mode not found' })
+      return
+    }
+
+    // Find scenes that reference this mode via the junction table
+    const matchingScenes = getAll<{ name: string; icon: string }>(
+      `SELECT DISTINCT s.name, s.icon FROM scenes s
+       JOIN scene_modes sm ON s.name = sm.scene_name
+       WHERE sm.mode_name = ?`,
+      [modeName],
+    )
+
+    const currentModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'mode'",
+    )
+    const wakeModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
+    )
+    const sleepModeRow = getOne<CurrentStateRow>(
+      "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
+    )
+
+    const triggerCountRow = db.prepare(
+      'SELECT COUNT(*) as cnt FROM mode_triggers WHERE mode_name = ?'
+    ).get(modeName) as { cnt: number }
+
+    res.json({
+      scenes: matchingScenes,
+      isCurrentMode: currentModeRow?.value === modeName,
+      isWakeMode: wakeModeRow?.value === modeName,
+      isSleepMode: sleepModeRow?.value === modeName,
+      triggerCount: triggerCountRow.cnt,
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /modes/:mode/triggers — add a trigger to a mode
+router.post('/modes/:mode/triggers', (req: Request, res: Response) => {
+  try {
+    const modeName = decodeURIComponent(String(req.params.mode))
+
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [modeName])
+    if (!modeExists) {
+      res.status(404).json({ error: 'Mode not found' })
+      return
+    }
+
+    const body = triggerSchema.parse(req.body)
+
+    if (body.type === 'sun' && !body.sunEvent) {
+      res.status(400).json({ error: 'sunEvent is required for sun triggers' })
+      return
+    }
+    if (body.type === 'time' && !body.time) {
+      res.status(400).json({ error: 'time is required for time triggers' })
+      return
+    }
+
+    // For sun triggers, ensure the sun event isn't already claimed by another mode
+    if (body.type === 'sun' && body.sunEvent) {
+      const existing = getOne<ModeTriggerRow>(
+        'SELECT * FROM mode_triggers WHERE trigger_type = ? AND sun_event = ?',
+        ['sun', body.sunEvent],
+      )
+      if (existing && existing.mode_name !== modeName) {
+        res.status(409).json({
+          error: `Sun event "${body.sunEvent}" is already assigned to mode "${existing.mode_name}"`,
+          conflictingMode: existing.mode_name,
+        })
+        return
+      }
+    }
+
+    const priority = body.priority ?? 0
+    const daysJson = body.days ? JSON.stringify(body.days) : null
+
+    const insertResult = run(
+      `INSERT INTO mode_triggers (mode_name, trigger_type, sun_event, trigger_time, trigger_days, priority)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [modeName, body.type, body.sunEvent ?? null, body.time ?? null, daysJson, priority],
+    )
+
+    const created = getOne<ModeTriggerRow>(
+      'SELECT * FROM mode_triggers WHERE id = ?',
+      [insertResult.lastInsertRowid],
+    )
+
+    // Refresh schedulers
+    sunModeScheduler.refreshFromDb()
+    timeTriggerScheduler.refreshFromDb()
+
+    res.status(201).json(created ? parseTrigger(created) : { id: insertResult.lastInsertRowid })
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: err.errors })
+      return
+    }
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// PUT /modes/:mode/triggers/:id — update a trigger
+router.put('/modes/:mode/triggers/:id', (req: Request, res: Response) => {
+  try {
+    const modeName = decodeURIComponent(String(req.params.mode))
+    const triggerId = Number(req.params.id)
+
+    const existing = getOne<ModeTriggerRow>(
+      'SELECT * FROM mode_triggers WHERE id = ? AND mode_name = ?',
+      [triggerId, modeName],
+    )
+    if (!existing) {
+      res.status(404).json({ error: 'Trigger not found' })
+      return
+    }
+
+    const body = triggerSchema.partial().parse(req.body)
+
+    const updatedType = body.type ?? existing.trigger_type
+    const updatedSunEvent = body.sunEvent !== undefined ? body.sunEvent : existing.sun_event
+    const updatedTime = body.time !== undefined ? body.time : existing.trigger_time
+    const updatedDays = body.days !== undefined ? JSON.stringify(body.days) : existing.trigger_days
+    const updatedPriority = body.priority !== undefined ? body.priority : existing.priority
+    const updatedEnabled = body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing.enabled
+
+    // Validate sun event uniqueness if changing sun_event
+    if (updatedType === 'sun' && updatedSunEvent && updatedSunEvent !== existing.sun_event) {
+      const conflict = getOne<ModeTriggerRow>(
+        'SELECT * FROM mode_triggers WHERE trigger_type = ? AND sun_event = ? AND id != ?',
+        ['sun', updatedSunEvent, triggerId],
+      )
+      if (conflict) {
+        res.status(409).json({
+          error: `Sun event "${updatedSunEvent}" is already assigned to mode "${conflict.mode_name}"`,
+          conflictingMode: conflict.mode_name,
+        })
+        return
+      }
+    }
+
+    run(
+      `UPDATE mode_triggers
+       SET trigger_type = ?, sun_event = ?, trigger_time = ?, trigger_days = ?, priority = ?, enabled = ?
+       WHERE id = ?`,
+      [updatedType, updatedSunEvent ?? null, updatedTime ?? null, updatedDays ?? null, updatedPriority, updatedEnabled, triggerId],
+    )
+
+    const updated = getOne<ModeTriggerRow>('SELECT * FROM mode_triggers WHERE id = ?', [triggerId])
+
+    // Refresh schedulers
+    sunModeScheduler.refreshFromDb()
+    timeTriggerScheduler.refreshFromDb()
+
+    res.json(updated ? parseTrigger(updated) : { id: triggerId })
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: err.errors })
+      return
+    }
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// DELETE /modes/:mode/triggers/:id — remove a trigger
+router.delete('/modes/:mode/triggers/:id', (req: Request, res: Response) => {
+  try {
+    const modeName = decodeURIComponent(String(req.params.mode))
+    const triggerId = Number(req.params.id)
+
+    const existing = getOne<ModeTriggerRow>(
+      'SELECT * FROM mode_triggers WHERE id = ? AND mode_name = ?',
+      [triggerId, modeName],
+    )
+    if (!existing) {
+      res.status(404).json({ error: 'Trigger not found' })
+      return
+    }
+
+    run('DELETE FROM mode_triggers WHERE id = ?', [triggerId])
+
+    // Refresh schedulers
+    sunModeScheduler.refreshFromDb()
+    timeTriggerScheduler.refreshFromDb()
+
+    res.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })
@@ -931,7 +1281,7 @@ router.post('/nighttime', async (_req: Request, res: Response) => {
     const prefRow = getOne<CurrentStateRow>(
       "SELECT * FROM current_state WHERE key = 'pref_night_exclude_rooms'",
     )
-    let excludeRooms: string[] = ['Bedroom']
+    let excludeRooms: string[] = ['Loo']
     try {
       if (prefRow?.value) excludeRooms = JSON.parse(prefRow.value)
     } catch { /* keep default */ }
@@ -975,7 +1325,7 @@ router.post('/guest-night', async (_req: Request, res: Response) => {
     const prefRow = getOne<CurrentStateRow>(
       "SELECT * FROM current_state WHERE key = 'pref_guest_night_exclude_rooms'",
     )
-    let excludeRooms: string[] = ['Bedroom']
+    let excludeRooms: string[] = ['Bedroom', 'Loo']
     try {
       if (prefRow?.value) {
         excludeRooms = JSON.parse(prefRow.value)
@@ -1039,6 +1389,78 @@ router.post('/night/unlock', (_req: Request, res: Response) => {
       "INSERT INTO logs (message, category, created_at) VALUES (?, 'system', datetime('now'))",
       ['Manual night unlock: all rooms unlocked'],
     )
+    res.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+// GET /notifications — list notifications
+router.get('/notifications', (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200)
+    const unreadOnly = req.query.unread_only === 'true'
+    const category = req.query.category as string | undefined
+
+    const notifications = notificationService.getAll({ limit, unreadOnly, category })
+    res.json(notifications)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// GET /notifications/count — unread count (lightweight, for badge)
+router.get('/notifications/count', (_req: Request, res: Response) => {
+  try {
+    const count = notificationService.getUnreadCount()
+    res.json({ count })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// PATCH /notifications/:id/read — mark as read
+router.patch('/notifications/:id/read', (req: Request, res: Response) => {
+  try {
+    notificationService.markRead(Number(req.params.id))
+    res.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /notifications/read-all — mark all as read
+router.post('/notifications/read-all', (_req: Request, res: Response) => {
+  try {
+    notificationService.markAllRead()
+    res.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /notifications/:id/dismiss — dismiss single
+router.post('/notifications/:id/dismiss', (req: Request, res: Response) => {
+  try {
+    notificationService.dismiss(Number(req.params.id))
+    res.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: msg })
+  }
+})
+
+// POST /notifications/dismiss-all — dismiss all
+router.post('/notifications/dismiss-all', (_req: Request, res: Response) => {
+  try {
+    notificationService.dismissAll()
     res.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

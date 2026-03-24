@@ -13,11 +13,15 @@ import lightsRoutes from './routes/lights.js'
 import systemRoutes from './routes/system.js'
 import hubitatRoutes from './routes/hubitat.js'
 import motionRoutes from './routes/motion.js'
+import dashboardRoutes from './routes/dashboard.js'
 import { motionHandler } from './lib/motion-handler.js'
 import { sunModeScheduler } from './lib/sun-mode-scheduler.js'
+import { timeTriggerScheduler } from './lib/time-trigger-scheduler.js'
 import { timerManager } from './lib/timer-manager.js'
 import { activateScene } from './lib/scene-executor.js'
 import { weatherIndicator } from './lib/weather-indicator.js'
+import { startHistoryCollector } from './lib/history-collector.js'
+import { notificationService } from './lib/notification-service.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -46,6 +50,7 @@ app.use('/api/lights', lightsRoutes)
 app.use('/api/system', systemRoutes)
 app.use('/api/hubitat', hubitatRoutes)
 app.use('/api/motion', motionRoutes)
+app.use('/api/dashboard', dashboardRoutes)
 
 // Hubitat webhook handler
 app.post('/hubitat', async (req, res) => {
@@ -75,15 +80,20 @@ app.post('/hubitat', async (req, res) => {
         break
 
       case 'temperature':
-        await motionHandler.handleTemperatureEvent(
-          displayName,
-          Number(eventValue),
+        // Update temperature in hub_devices attributes (source of truth)
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.temperature', ?), updated_at = datetime('now') WHERE label = ?`,
+          [Number(eventValue), displayName],
         )
         break
 
       case 'illuminance':
       case 'lux':
-        await motionHandler.handleLuxEvent(displayName, Number(eventValue))
+        // Update illuminance in hub_devices attributes (source of truth)
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.illuminance', ?), updated_at = datetime('now') WHERE label = ?`,
+          [Number(eventValue), displayName],
+        )
         break
 
       case 'battery': {
@@ -99,13 +109,68 @@ app.post('/hubitat', async (req, res) => {
             'INSERT INTO logs (message, category) VALUES (?, ?)',
             [`Critical battery: ${displayName} at ${batteryLevel}%`, 'battery'],
           )
+          notificationService.create({
+            severity: 'critical',
+            category: 'battery',
+            title: `${displayName} battery critical`,
+            message: `${displayName} at ${batteryLevel}% — replace soon`,
+            sourceType: 'sensor',
+            sourceId: String(displayName),
+            sourceLabel: displayName,
+            dedupKey: `battery_critical:${displayName}`,
+          })
         } else if (batteryLevel < 15) {
           console.warn(`Low battery: ${displayName} at ${batteryLevel}%`)
           run(
             'INSERT INTO logs (message, category) VALUES (?, ?)',
             [`Low battery: ${displayName} at ${batteryLevel}%`, 'battery'],
           )
+          notificationService.create({
+            severity: 'warning',
+            category: 'battery',
+            title: `${displayName} battery low`,
+            message: `${displayName} at ${batteryLevel}%`,
+            sourceType: 'sensor',
+            sourceId: String(displayName),
+            sourceLabel: displayName,
+            dedupKey: `battery_low:${displayName}`,
+          })
         }
+        break
+      }
+
+      case 'power': {
+        // Smart plug real-time power draw (watts)
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.power', ?), updated_at = datetime('now') WHERE label = ?`,
+          [Number(eventValue), displayName],
+        )
+        run(
+          'INSERT INTO device_history (source, source_id, value) VALUES (?, ?, ?)',
+          ['power', displayName, Number(eventValue)],
+        )
+        break
+      }
+
+      case 'energy': {
+        // Smart plug cumulative energy usage (kWh)
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.energy', ?), updated_at = datetime('now') WHERE label = ?`,
+          [Number(eventValue), displayName],
+        )
+        run(
+          'INSERT INTO device_history (source, source_id, value) VALUES (?, ?, ?)',
+          ['energy', displayName, Number(eventValue)],
+        )
+        break
+      }
+
+      case 'switch': {
+        // Track on/off state changes in attributes
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.switch', ?), updated_at = datetime('now') WHERE label = ?`,
+          [eventValue, displayName],
+        )
         break
       }
     }
@@ -133,6 +198,9 @@ io.on('connection', (socket) => {
   })
 })
 
+// Wire notification service to Socket.io for real-time client push
+notificationService.setEmitter((event, data) => io.emit(event, data))
+
 // Wire up scene timer expiry — activate the target scene when the timer fires
 timerManager.setOnExpire(async (targetScene, sceneName) => {
   try {
@@ -149,10 +217,12 @@ timerManager.setOnExpire(async (targetScene, sceneName) => {
 })
 
 httpServer.listen(PORT, () => {
-  console.log(`The Fairies server running on port ${PORT}`)
+  console.log(`Home Fairy server running on port ${PORT}`)
   console.log(`CORS origin: ${CORS_ORIGIN}`)
   sunModeScheduler.init(io)
+  timeTriggerScheduler.init(io)
   weatherIndicator.start()
+  startHistoryCollector()
 })
 
 export { io }

@@ -1,4 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
+import { ModesList } from '@/components/modes/ModesList'
+import ModeDetail from '@/components/modes/ModeDetail'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -18,7 +20,6 @@ import {
   Search,
   Minus,
   ChevronDown,
-  ChevronUp,
   ArrowDown,
   ArrowUp,
   Lightbulb,
@@ -31,8 +32,8 @@ import {
 } from 'lucide-react'
 import { HsvColorPicker } from 'react-colorful'
 import { api } from '@/lib/api'
-import type { SunScheduleEntry, ConfiguredStop, MtaStop, MtaIndicatorConfig, WeatherIndicatorConfig, WeatherColorEntry, NightStatus } from '@/lib/api'
-import { cn, hsbToHex, formatTime } from '@/lib/utils'
+import type { ConfiguredStop, MtaStop, MtaIndicatorConfig, WeatherIndicatorConfig, DashboardStats } from '@/lib/api'
+import { cn, hsbToHex } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import { useTheme } from '@/hooks/useTheme'
 import type { Theme } from '@/hooks/useTheme'
@@ -48,7 +49,7 @@ function Section({
 }) {
   return (
     <section className="card rounded-xl border p-5">
-      <h3 className="text-caption mb-4 text-sm font-semibold uppercase tracking-wider">
+      <h3 className="text-caption mb-4 text-sm font-semibold">
         {title}
       </h3>
       {children}
@@ -116,11 +117,12 @@ function GeneralSection() {
   })
 
   const tempUnit = prefs?.temp_unit ?? 'C'
+  const energyRate = prefs?.energy_rate ?? ''
 
   return (
     <Section title="General">
       <div className="flex items-center justify-between">
-        <span className="text-heading text-sm">Temperature Unit</span>
+        <span className="text-heading text-sm">Temperature unit</span>
         <div className="surface flex rounded-lg border" style={{ borderColor: 'var(--border-secondary)' }}>
           {(['C', 'F'] as const).map(unit => (
             <button
@@ -138,94 +140,59 @@ function GeneralSection() {
           ))}
         </div>
       </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-heading text-sm">Energy rate</span>
+          <p className="text-caption text-xs">Cost per kWh for energy estimates</p>
+        </div>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          placeholder="0.30"
+          value={energyRate}
+          onChange={(e) => mutation.mutate({ key: 'energy_rate', value: e.target.value })}
+          className="w-24 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-right text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          aria-label="Energy rate per kWh"
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-heading text-sm">Currency symbol</span>
+          <p className="text-caption text-xs">Used for energy cost displays</p>
+        </div>
+        <input
+          type="text"
+          maxLength={3}
+          placeholder="$"
+          value={prefs?.currency_symbol ?? ''}
+          onChange={(e) => mutation.mutate({ key: 'currency_symbol', value: e.target.value })}
+          className="w-16 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-center text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          aria-label="Currency symbol"
+        />
+      </div>
     </Section>
   )
 }
 
-// ── Modes section ───────────────────────────────────────────────────────────
+// ── Modes section (uses new ModesList/ModeDetail components) ────────────────
 
 function ModesSection() {
-  const queryClient = useQueryClient()
-  const { toast } = useToast()
-  const [newMode, setNewMode] = useState('')
+  const [selectedMode, setSelectedMode] = useState<string | null>(null)
 
-  const { data: modes } = useQuery({
-    queryKey: ['system', 'modes'],
-    queryFn: api.system.getModes,
-  })
-
-  const addMutation = useMutation({
-    mutationFn: api.system.addMode,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['system', 'modes'] })
-      queryClient.invalidateQueries({ queryKey: ['system', 'current'] })
-      setNewMode('')
-      toast({ message: 'Mode added' })
-    },
-    onError: () => toast({ message: 'Failed to add mode', type: 'error' }),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: api.system.deleteMode,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['system', 'modes'] })
-      queryClient.invalidateQueries({ queryKey: ['system', 'current'] })
-      toast({ message: 'Mode removed' })
-    },
-    onError: () => toast({ message: 'Failed to remove mode', type: 'error' }),
-  })
-
-  const handleAdd = () => {
-    const trimmed = newMode.trim()
-    if (!trimmed) return
-    addMutation.mutate(trimmed)
-  }
-
-  const handleDelete = (mode: string) => {
-    if (!confirm(`Remove mode "${mode}"?`)) return
-    deleteMutation.mutate(mode)
+  if (selectedMode) {
+    return (
+      <ModeDetail
+        modeName={selectedMode}
+        onBack={() => setSelectedMode(null)}
+      />
+    )
   }
 
   return (
-    <Section title="Modes">
-      <div className="mb-4 flex gap-2">
-        <input
-          type="text"
-          value={newMode}
-          onChange={e => setNewMode(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          placeholder="New mode name..."
-          className="input-field flex-1 rounded-lg border px-3 py-2 text-sm placeholder:text-[var(--text-muted)] focus:border-fairy-500 focus:outline-none"
-        />
-        <button
-          onClick={handleAdd}
-          disabled={!newMode.trim() || addMutation.isPending}
-          className="flex items-center gap-1.5 rounded-lg bg-fairy-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-fairy-600 disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" />
-          Add
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {modes?.map(mode => (
-          <span
-            key={mode}
-            className="surface inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-heading"
-          >
-            {mode}
-            <button
-              onClick={() => handleDelete(mode)}
-              className="rounded-full p-0.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-red-400"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        ))}
-        {modes?.length === 0 && (
-          <p className="text-caption text-sm">No modes configured.</p>
-        )}
-      </div>
-    </Section>
+    <ModesList onSelectMode={setSelectedMode} />
   )
 }
 
@@ -420,52 +387,7 @@ function NightModeSection() {
   )
 }
 
-// ── Sun Schedule section ────────────────────────────────────────────────────
-
-function SunScheduleSection() {
-  const { data: schedule } = useQuery({
-    queryKey: ['system', 'sun-schedule'],
-    queryFn: api.system.getSunSchedule,
-    refetchInterval: 60_000,
-  })
-
-  const formatPhase = (phase: string) =>
-    phase.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())
-
-  return (
-    <Section title="Sun Schedule">
-      {schedule && schedule.length > 0 ? (
-        <div className="space-y-2">
-          {schedule.map((entry: SunScheduleEntry) => (
-            <div
-              key={entry.sunPhase}
-              className={cn(
-                'surface flex items-center justify-between rounded-lg px-3 py-2',
-                entry.isPast && 'opacity-40',
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <Sun className="h-4 w-4 text-amber-400" />
-                <div>
-                  <p className="text-heading text-sm">{entry.mode}</p>
-                  <p className="text-caption text-xs">{formatPhase(entry.sunPhase)}</p>
-                </div>
-              </div>
-              <span className="font-mono text-sm text-[var(--text-secondary)]">
-                {formatTime(entry.time)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-sm text-caption">
-          <Sun className="h-4 w-4" />
-          No sun schedule available
-        </div>
-      )}
-    </Section>
-  )
-}
+// SunScheduleSection removed — sun schedule is now shown per-mode in ModeDetail triggers
 
 // ── Devices section ─────────────────────────────────────────────────────────
 
@@ -860,7 +782,7 @@ function SubwaySection() {
               <div className="max-h-64 overflow-y-auto space-y-3">
                 {Object.entries(groupedStops).map(([borough, stops]) => (
                   <div key={borough}>
-                    <p className="text-caption text-xs font-semibold uppercase tracking-wider mb-1.5">
+                    <p className="text-caption text-xs font-semibold tracking-wider mb-1.5">
                       {borough}
                     </p>
                     <div className="space-y-1">
@@ -1030,6 +952,27 @@ function SubwaySection() {
   )
 }
 
+// ── Shared sensor hook ───────────────────────────────────────────────────────
+
+function useAllSensors() {
+  const { data: rooms } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: api.rooms.getAll,
+  })
+  return useMemo(() => {
+    if (!rooms) return []
+    const sensors: { name: string; room: string }[] = []
+    for (const room of rooms) {
+      if (room.sensors) {
+        for (const sensor of room.sensors) {
+          sensors.push({ name: sensor.name, room: room.name })
+        }
+      }
+    }
+    return sensors
+  }, [rooms])
+}
+
 // ── Indicator Light section ─────────────────────────────────────────────────
 
 function IndicatorSection() {
@@ -1045,11 +988,6 @@ function IndicatorSection() {
     queryKey: ['lifx', 'lights'],
     queryFn: api.lifx.getLights,
     retry: false,
-  })
-
-  const { data: rooms } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: api.rooms.getAll,
   })
 
   const saveMutation = useMutation({
@@ -1086,19 +1024,7 @@ function IndicatorSection() {
     saveMutation.mutate({ ...config, ...patch })
   }
 
-  // Extract all sensors from rooms
-  const allSensors = useMemo(() => {
-    if (!rooms) return []
-    const sensors: { name: string; room: string }[] = []
-    for (const room of rooms) {
-      if (room.sensors) {
-        for (const sensor of room.sensors) {
-          sensors.push({ name: sensor.name, room: room.name })
-        }
-      }
-    }
-    return sensors
-  }, [rooms])
+  const allSensors = useAllSensors()
 
   const canTest = config.enabled && config.lightId
 
@@ -1244,11 +1170,6 @@ function WeatherIndicatorSection() {
     retry: false,
   })
 
-  const { data: rooms } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: api.rooms.getAll,
-  })
-
   const saveMutation = useMutation({
     mutationFn: (config: WeatherIndicatorConfig) => api.system.saveWeatherIndicator(config),
     onSuccess: () => {
@@ -1284,19 +1205,7 @@ function WeatherIndicatorSection() {
     saveMutation.mutate({ ...config, ...patch })
   }
 
-  // Extract all sensors from rooms
-  const allSensors = useMemo(() => {
-    if (!rooms) return []
-    const sensors: { name: string; room: string }[] = []
-    for (const room of rooms) {
-      if (room.sensors) {
-        for (const sensor of room.sensors) {
-          sensors.push({ name: sensor.name, room: room.name })
-        }
-      }
-    }
-    return sensors
-  }, [rooms])
+  const allSensors = useAllSensors()
 
   // ── Custom colour state ──────────────────────────────────────────────────
   const { data: customColors } = useQuery({
@@ -1595,8 +1504,8 @@ function WeatherIndicatorSection() {
         {/* Colour Reference — interactive preview + customisation */}
         {weatherColors && (
           <div className="mt-2 rounded-lg border p-4" style={{ borderColor: 'var(--border-secondary)' }}>
-            <p className="text-caption text-xs font-semibold uppercase tracking-wider mb-3">
-              Colour Reference
+            <p className="text-caption text-xs font-semibold mb-3">
+              Colour reference
             </p>
 
             {!config.lightId && (
@@ -1785,6 +1694,263 @@ function WeatherIndicatorSection() {
   )
 }
 
+// ── Data management section ──────────────────────────────────────────────────
+
+type DeleteConfirmState =
+  | { type: 'all' }
+  | { type: 'older-than'; label: string; isoDate: string }
+  | { type: 'by-source'; source: string }
+  | null
+
+const AGE_OPTIONS: { label: string; months: number }[] = [
+  { label: '1 month', months: 1 },
+  { label: '3 months', months: 3 },
+  { label: '6 months', months: 6 },
+  { label: '1 year', months: 12 },
+]
+
+function getIsoDateMonthsAgo(months: number): string {
+  const d = new Date()
+  d.setMonth(d.getMonth() - months)
+  return d.toISOString()
+}
+
+function formatOldestRecord(value: string | null): string {
+  if (!value) return 'No data collected yet'
+  return new Date(value).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function DataManagementSection() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  const [confirmState, setConfirmState] = useState<DeleteConfirmState>(null)
+  const [selectedAge, setSelectedAge] = useState(AGE_OPTIONS[0])
+  const [selectedSource, setSelectedSource] = useState<string>('')
+
+  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
+    queryKey: ['dashboard', 'stats'],
+    queryFn: api.dashboard.getStats,
+    refetchOnWindowFocus: false,
+  })
+
+  // Keep selectedSource in sync when sources load
+  const sources = stats?.sources ?? []
+  const resolvedSource = selectedSource || sources[0]?.source || ''
+
+  const deleteMutation = useMutation({
+    mutationFn: api.dashboard.deleteHistory,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'stats'] })
+      setConfirmState(null)
+      const count = result.deleted
+      toast({
+        message: count > 0 ? `Deleted ${count.toLocaleString()} record${count === 1 ? '' : 's'}` : 'No records matched',
+      })
+    },
+    onError: () => toast({ message: 'Failed to delete records', type: 'error' }),
+  })
+
+  const handleConfirm = () => {
+    if (!confirmState) return
+    if (confirmState.type === 'all') {
+      deleteMutation.mutate({ all: true })
+    } else if (confirmState.type === 'older-than') {
+      deleteMutation.mutate({ olderThan: confirmState.isoDate })
+    } else if (confirmState.type === 'by-source') {
+      deleteMutation.mutate({ source: confirmState.source })
+    }
+  }
+
+  const totalRows = stats?.totalRows ?? 0
+
+  return (
+    <Section title="Data management">
+      {/* Database info */}
+      <div className="mb-5 space-y-2">
+        {statsLoading ? (
+          <div className="space-y-2">
+            <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-secondary)]" />
+            <div className="h-4 w-1/2 animate-pulse rounded bg-[var(--bg-secondary)]" />
+            <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--bg-secondary)]" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[var(--text-secondary)]">Database size</span>
+              <span className="text-heading">{stats ? `${stats.dbSizeMB.toFixed(1)} MB` : '—'}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[var(--text-secondary)]">Historical readings</span>
+              <span className="text-heading">{stats ? `${totalRows.toLocaleString()} records` : '—'}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[var(--text-secondary)]">Data since</span>
+              <span className="text-heading">{formatOldestRecord(stats?.oldestRecord ?? null)}</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="mb-4 border-t" style={{ borderColor: 'var(--border-secondary)' }} />
+
+      <div className="space-y-4">
+        {/* Clear all */}
+        <div className="space-y-2">
+          <button
+            onClick={() => setConfirmState({ type: 'all' })}
+            disabled={deleteMutation.isPending || totalRows === 0}
+            className="rounded-lg bg-red-500/15 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px]"
+          >
+            Clear all historical data
+          </button>
+          {confirmState?.type === 'all' && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+              <p className="mb-3 text-red-400">
+                This will permanently delete all {totalRows.toLocaleString()} records. This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirm}
+                  disabled={deleteMutation.isPending}
+                  className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50 min-h-[44px]"
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Confirm delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmState(null)}
+                  disabled={deleteMutation.isPending}
+                  className="rounded-lg border px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50 min-h-[44px]"
+                  style={{ borderColor: 'var(--border-secondary)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Clear older than */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <label htmlFor="data-age-select" className="text-sm text-[var(--text-secondary)]">
+              Clear data older than
+            </label>
+            <select
+              id="data-age-select"
+              value={selectedAge.months}
+              onChange={e => {
+                const months = Number(e.target.value)
+                setSelectedAge(AGE_OPTIONS.find(o => o.months === months) ?? AGE_OPTIONS[0])
+              }}
+              className="rounded-lg border bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] min-h-[44px]"
+              style={{ borderColor: 'var(--border-secondary)' }}
+            >
+              {AGE_OPTIONS.map(o => (
+                <option key={o.months} value={o.months}>{o.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                const isoDate = getIsoDateMonthsAgo(selectedAge.months)
+                setConfirmState({ type: 'older-than', label: selectedAge.label, isoDate })
+              }}
+              disabled={deleteMutation.isPending || totalRows === 0}
+              className="rounded-lg bg-red-500/15 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px]"
+            >
+              Delete
+            </button>
+          </div>
+          {confirmState?.type === 'older-than' && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+              <p className="mb-3 text-red-400">
+                This will permanently delete all records older than {confirmState.label}. This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirm}
+                  disabled={deleteMutation.isPending}
+                  className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50 min-h-[44px]"
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Confirm delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmState(null)}
+                  disabled={deleteMutation.isPending}
+                  className="rounded-lg border px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50 min-h-[44px]"
+                  style={{ borderColor: 'var(--border-secondary)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Clear by source */}
+        {sources.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <label htmlFor="data-source-select" className="text-sm text-[var(--text-secondary)]">
+                Clear data by type
+              </label>
+              <select
+                id="data-source-select"
+                value={resolvedSource}
+                onChange={e => setSelectedSource(e.target.value)}
+                className="rounded-lg border bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] min-h-[44px]"
+                style={{ borderColor: 'var(--border-secondary)' }}
+              >
+                {sources.map(s => (
+                  <option key={s.source} value={s.source}>
+                    {s.source} ({s.count.toLocaleString()} records)
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => setConfirmState({ type: 'by-source', source: resolvedSource })}
+                disabled={deleteMutation.isPending || !resolvedSource}
+                className="rounded-lg bg-red-500/15 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px]"
+              >
+                Delete
+              </button>
+            </div>
+            {confirmState?.type === 'by-source' && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+                <p className="mb-3 text-red-400">
+                  This will permanently delete all records with source "{confirmState.source}". This cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleConfirm}
+                    disabled={deleteMutation.isPending}
+                    className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50 min-h-[44px]"
+                  >
+                    {deleteMutation.isPending ? 'Deleting...' : 'Confirm delete'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmState(null)}
+                    disabled={deleteMutation.isPending}
+                    className="rounded-lg border px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50 min-h-[44px]"
+                    style={{ borderColor: 'var(--border-secondary)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 // ── System section ──────────────────────────────────────────────────────────
 
 function SystemSection() {
@@ -1839,9 +2005,81 @@ function SystemSection() {
   )
 }
 
+// ── Category accordion ───────────────────────────────────────────────────────
+
+type CategoryId = 'preferences' | 'modes-and-schedule' | 'public-transport' | 'weather' | 'system'
+
+function CategoryAccordion({
+  categoryId,
+  label,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  categoryId: CategoryId
+  label: string
+  isOpen: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  const headingId = `category-heading-${categoryId}`
+  const panelId = `category-panel-${categoryId}`
+
+  return (
+    <div>
+      <button
+        id={headingId}
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+        className={cn(
+          'flex w-full items-center justify-between py-3 text-left transition-colors',
+          'min-h-[44px]',
+          !isOpen && 'border-b border-[var(--border-secondary)]',
+        )}
+      >
+        <span className="text-heading text-base font-semibold">{label}</span>
+        <ChevronDown
+          className={cn(
+            'h-5 w-5 text-[var(--text-secondary)] transition-transform duration-300',
+            isOpen && 'rotate-180',
+          )}
+          aria-hidden="true"
+        />
+      </button>
+
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={headingId}
+        className="grid transition-all duration-300"
+        style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-4 pt-3 pb-2">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Settings page ───────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const [openCategory, setOpenCategory] = useState<CategoryId | null>('preferences')
+
+  const handleToggle = (id: CategoryId) => {
+    setOpenCategory(prev => (prev === id ? null : id))
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center gap-2">
@@ -1849,18 +2087,57 @@ export default function SettingsPage() {
         <h1 className="text-heading text-lg font-semibold">Settings</h1>
       </div>
 
-      <div className="space-y-4">
-        <ThemeSection />
-        <GeneralSection />
-        <ModesSection />
-        <NightModeSection />
-        <SunScheduleSection />
-        <SubwaySection />
-        <IndicatorSection />
-        <WeatherIndicatorSection />
-        <DevicesSection />
-        <TimersSection />
-        <SystemSection />
+      <div className="divide-y divide-[var(--border-secondary)]">
+        <CategoryAccordion
+          categoryId="preferences"
+          label="Preferences"
+          isOpen={openCategory === 'preferences'}
+          onToggle={() => handleToggle('preferences')}
+        >
+          <ThemeSection />
+          <GeneralSection />
+        </CategoryAccordion>
+
+        <CategoryAccordion
+          categoryId="modes-and-schedule"
+          label="Modes and schedule"
+          isOpen={openCategory === 'modes-and-schedule'}
+          onToggle={() => handleToggle('modes-and-schedule')}
+        >
+          <ModesSection />
+          <NightModeSection />
+        </CategoryAccordion>
+
+        <CategoryAccordion
+          categoryId="public-transport"
+          label="Public transport"
+          isOpen={openCategory === 'public-transport'}
+          onToggle={() => handleToggle('public-transport')}
+        >
+          <SubwaySection />
+          <IndicatorSection />
+        </CategoryAccordion>
+
+        <CategoryAccordion
+          categoryId="weather"
+          label="Weather"
+          isOpen={openCategory === 'weather'}
+          onToggle={() => handleToggle('weather')}
+        >
+          <WeatherIndicatorSection />
+        </CategoryAccordion>
+
+        <CategoryAccordion
+          categoryId="system"
+          label="System"
+          isOpen={openCategory === 'system'}
+          onToggle={() => handleToggle('system')}
+        >
+          <DevicesSection />
+          <TimersSection />
+          <DataManagementSection />
+          <SystemSection />
+        </CategoryAccordion>
       </div>
     </div>
   )

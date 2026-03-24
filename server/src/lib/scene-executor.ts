@@ -1,4 +1,5 @@
-import { lifxClient, BatchState } from './lifx-client.js'
+import { lifxClient, BatchState, SetStatesResponse, getRateLimitStatus } from './lifx-client.js'
+import { notificationService } from './notification-service.js'
 import { hubitatClient } from './hubitat-client.js'
 import { twinklyClient } from './twinkly-client.js'
 import { fairyDeviceClient } from './fairy-device-client.js'
@@ -14,8 +15,6 @@ interface LightCommand {
   power?: string
   duration?: number
 }
-
-// lifx_scene type removed — all scenes migrated to per-light lifx_light commands
 
 interface AllOffCommand {
   type: 'all_off'
@@ -45,7 +44,7 @@ interface FairyDeviceCommand {
   type: 'fairy_device'
   name: string
   command: string
-  id?: string  // brightness as string (legacy format)
+  brightness?: number
 }
 
 interface FairySceneCommand {
@@ -58,7 +57,6 @@ interface SceneTimerCommand {
   type: 'scene_timer'
   name: string
   command: string  // target scene to activate after delay
-  id?: string      // delay in seconds (legacy format)
   duration?: number
 }
 
@@ -91,8 +89,6 @@ type Command =
 interface SceneRow {
   name: string
   icon: string
-  rooms: string
-  modes: string
   commands: string
   tags: string
 }
@@ -113,6 +109,93 @@ function log(message: string, category = 'scene'): void {
   }
 }
 
+/**
+ * Inspect setStates response for failed lights and retry them individually.
+ * Uses setState (single light) for retries to isolate failures.
+ */
+async function retryFailedLights(
+  response: SetStatesResponse,
+  originalStates: BatchState[],
+  maxRetries = 2,
+  delayMs = 2000,
+): Promise<void> {
+  // Build a map from light ID to original state for quick lookup
+  const stateMap = new Map<string, BatchState>()
+  for (const s of originalStates) {
+    const id = s.selector.replace('id:', '')
+    stateMap.set(id, s)
+  }
+
+  // Collect failed lights from all operation results
+  let failed: { id: string; label: string; status: string; state: BatchState }[] = []
+
+  for (const opResult of response.results) {
+    if (!opResult.results) continue
+    for (const lightResult of opResult.results) {
+      if (lightResult.status !== 'ok') {
+        const state = stateMap.get(lightResult.id)
+        if (state) {
+          failed.push({
+            id: lightResult.id,
+            label: lightResult.label,
+            status: lightResult.status,
+            state,
+          })
+        }
+      }
+    }
+  }
+
+  if (failed.length === 0) return
+
+  log(`${failed.length} light(s) failed in batch: ${failed.map(f => `${f.label} (${f.status})`).join(', ')}`)
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Rate limit guard — preserve budget for normal operations
+    const rl = getRateLimitStatus()
+    if (rl.remaining !== null && rl.remaining < 10) {
+      log(`Skipping retry attempt ${attempt}: rate limit low (${rl.remaining} remaining)`, 'device_error')
+      break
+    }
+
+    await new Promise(resolve => setTimeout(resolve, delayMs))
+
+    const stillFailed: typeof failed = []
+    for (const light of failed) {
+      try {
+        const { selector, ...stateWithoutSelector } = light.state
+        await lifxClient.setState(selector, stateWithoutSelector)
+        log(`Retry ${attempt} succeeded for ${light.label}`)
+      } catch {
+        stillFailed.push(light)
+      }
+    }
+
+    if (stillFailed.length === 0) {
+      log(`All failed light(s) recovered after retry ${attempt}`)
+      return
+    }
+
+    failed = stillFailed
+  }
+
+  // Final failures — log and create notification
+  for (const light of failed) {
+    const msg = `Light "${light.label}" (${light.state.selector}) failed to respond after ${maxRetries + 1} attempts`
+    log(msg, 'device_error')
+    notificationService.create({
+      severity: 'warning',
+      category: 'device_error',
+      title: `${light.label} did not respond`,
+      message: msg,
+      sourceType: 'lifx_light',
+      sourceId: light.id,
+      sourceLabel: light.label,
+      dedupKey: `device_error:${light.state.selector}`,
+    })
+  }
+}
+
 export async function activateScene(sceneName: string): Promise<void> {
   const scene = getOne<SceneRow>(
     'SELECT * FROM scenes WHERE name = ?',
@@ -123,7 +206,10 @@ export async function activateScene(sceneName: string): Promise<void> {
   }
 
   const commands: Command[] = JSON.parse(scene.commands)
-  const rooms: RoomInfo[] = JSON.parse(scene.rooms)
+  const rooms = getAll<{ room_name: string; priority: number }>(
+    'SELECT room_name, priority FROM scene_rooms WHERE scene_name = ?',
+    [sceneName],
+  ).map(r => ({ name: r.room_name, priority: r.priority }))
 
   log(`Activating scene: ${sceneName}`)
 
@@ -150,8 +236,9 @@ export async function activateScene(sceneName: string): Promise<void> {
         if (cmd.duration !== undefined) state.duration = cmd.duration
         return state
       })
-      await lifxClient.setStates(states)
+      const response = await lifxClient.setStates(states)
       log(`Batch set ${states.length} light(s) via setStates`)
+      await retryFailedLights(response, states)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log(`Error in batch setStates: ${msg}`)
@@ -229,13 +316,13 @@ export async function activateScene(sceneName: string): Promise<void> {
             [cmd.name],
           )
           if (fairyDev?.ip) {
-            const brightness = cmd.id ? parseInt(cmd.id, 10) : 100
+            const brightness = cmd.brightness ?? 100
             if (cmd.command.toLowerCase() === 'off') {
               await fairyDeviceClient.turnOff(fairyDev.ip)
             } else {
               await fairyDeviceClient.setBrightness(fairyDev.ip, Math.round(brightness * 2.55))
             }
-            log(`Fairy device ${cmd.name}: ${cmd.command} (brightness: ${cmd.id || 'default'})`)
+            log(`Fairy device ${cmd.name}: ${cmd.command} (brightness: ${brightness})`)
           } else {
             log(`Fairy device not found: ${cmd.name}`)
           }
@@ -255,7 +342,7 @@ export async function activateScene(sceneName: string): Promise<void> {
         }
 
         case 'scene_timer': {
-          const delaySec = cmd.duration || (cmd.id ? parseInt(cmd.id, 10) : 300)
+          const delaySec = cmd.duration ?? 300
           const targetScene = cmd.command || cmd.name
           timerManager.createTimer(sceneName, targetScene, delaySec)
           log(`Scene timer: activate "${targetScene}" in ${delaySec}s`)
@@ -301,6 +388,12 @@ export async function activateScene(sceneName: string): Promise<void> {
       [sceneName, room.name],
     )
   }
+
+  // Track when this scene was last activated
+  run(
+    `UPDATE scenes SET last_activated_at = datetime('now') WHERE name = ?`,
+    [sceneName],
+  )
 }
 
 export async function deactivateScene(sceneName: string): Promise<void> {
@@ -312,7 +405,10 @@ export async function deactivateScene(sceneName: string): Promise<void> {
     throw new Error(`Scene not found: ${sceneName}`)
   }
 
-  const rooms: RoomInfo[] = JSON.parse(scene.rooms)
+  const rooms = getAll<{ room_name: string; priority: number }>(
+    'SELECT room_name, priority FROM scene_rooms WHERE scene_name = ?',
+    [sceneName],
+  ).map(r => ({ name: r.room_name, priority: r.priority }))
   const commands: Command[] = JSON.parse(scene.commands)
 
   log(`Deactivating scene: ${sceneName}`)
@@ -329,8 +425,9 @@ export async function deactivateScene(sceneName: string): Promise<void> {
         power: 'off',
         duration: 1,
       }))
-      await lifxClient.setStates(states)
+      const response = await lifxClient.setStates(states)
       log(`Batch turned off ${states.length} light(s)`)
+      await retryFailedLights(response, states)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log(`Error in batch deactivate: ${msg}`)
@@ -426,7 +523,8 @@ export async function deactivateScene(sceneName: string): Promise<void> {
       // setStates supports up to 50 per call, batch if needed
       for (let i = 0; i < roomLightStates.length; i += 50) {
         const batch = roomLightStates.slice(i, i + 50)
-        await lifxClient.setStates(batch)
+        const batchResponse = await lifxClient.setStates(batch)
+        await retryFailedLights(batchResponse, batch)
       }
       log(`Batch turned off ${roomLightStates.length} room light(s)`)
     } catch (err) {
@@ -437,7 +535,7 @@ export async function deactivateScene(sceneName: string): Promise<void> {
 
   for (const room of rooms) {
     run(
-      `UPDATE rooms SET current_scene = NULL, updated_at = datetime('now') WHERE name = ?`,
+      `UPDATE rooms SET current_scene = NULL, scene_manual = 0, updated_at = datetime('now') WHERE name = ?`,
       [room.name],
     )
   }
