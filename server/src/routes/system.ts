@@ -19,8 +19,7 @@ import { motionHandler } from '../lib/motion-handler.js'
 const router = Router()
 
 // Lazy-load time-trigger-scheduler once it exists
-let timeTriggerScheduler: { refreshFromDb: () => void } | null = null
-import('../lib/time-trigger-scheduler.js').then(m => { timeTriggerScheduler = m.timeTriggerScheduler }).catch(() => {})
+import { timeTriggerScheduler } from '../lib/time-trigger-scheduler.js'
 
 interface CurrentStateRow {
   key: string
@@ -285,8 +284,9 @@ const triggerSchema = z.object({
   type: z.enum(['sun', 'time']),
   sunEvent: z.string().optional(),
   time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  days: z.array(z.number().min(0).max(6)).optional(),
+  days: z.array(z.number().min(0).max(6)).min(1, 'At least one day is required').optional(),
   priority: z.number().optional(),
+  enabled: z.boolean().optional(),
 })
 
 function upsertState(key: string, value: string): void {
@@ -664,10 +664,8 @@ router.post('/modes/:mode/triggers', (req: Request, res: Response) => {
     )
 
     // Refresh schedulers
-    if ('refreshFromDb' in sunModeScheduler) {
-      (sunModeScheduler as unknown as { refreshFromDb: () => void }).refreshFromDb()
-    }
-    timeTriggerScheduler?.refreshFromDb()
+    sunModeScheduler.refreshFromDb()
+    timeTriggerScheduler.refreshFromDb()
 
     res.status(201).json(created ? parseTrigger(created) : { id: insertResult.lastInsertRowid })
   } catch (err) {
@@ -702,6 +700,7 @@ router.put('/modes/:mode/triggers/:id', (req: Request, res: Response) => {
     const updatedTime = body.time !== undefined ? body.time : existing.trigger_time
     const updatedDays = body.days !== undefined ? JSON.stringify(body.days) : existing.trigger_days
     const updatedPriority = body.priority !== undefined ? body.priority : existing.priority
+    const updatedEnabled = body.enabled !== undefined ? (body.enabled ? 1 : 0) : existing.enabled
 
     // Validate sun event uniqueness if changing sun_event
     if (updatedType === 'sun' && updatedSunEvent && updatedSunEvent !== existing.sun_event) {
@@ -720,18 +719,16 @@ router.put('/modes/:mode/triggers/:id', (req: Request, res: Response) => {
 
     run(
       `UPDATE mode_triggers
-       SET trigger_type = ?, sun_event = ?, trigger_time = ?, trigger_days = ?, priority = ?
+       SET trigger_type = ?, sun_event = ?, trigger_time = ?, trigger_days = ?, priority = ?, enabled = ?
        WHERE id = ?`,
-      [updatedType, updatedSunEvent ?? null, updatedTime ?? null, updatedDays ?? null, updatedPriority, triggerId],
+      [updatedType, updatedSunEvent ?? null, updatedTime ?? null, updatedDays ?? null, updatedPriority, updatedEnabled, triggerId],
     )
 
     const updated = getOne<ModeTriggerRow>('SELECT * FROM mode_triggers WHERE id = ?', [triggerId])
 
     // Refresh schedulers
-    if ('refreshFromDb' in sunModeScheduler) {
-      (sunModeScheduler as unknown as { refreshFromDb: () => void }).refreshFromDb()
-    }
-    timeTriggerScheduler?.refreshFromDb()
+    sunModeScheduler.refreshFromDb()
+    timeTriggerScheduler.refreshFromDb()
 
     res.json(updated ? parseTrigger(updated) : { id: triggerId })
   } catch (err) {
@@ -762,10 +759,8 @@ router.delete('/modes/:mode/triggers/:id', (req: Request, res: Response) => {
     run('DELETE FROM mode_triggers WHERE id = ?', [triggerId])
 
     // Refresh schedulers
-    if ('refreshFromDb' in sunModeScheduler) {
-      (sunModeScheduler as unknown as { refreshFromDb: () => void }).refreshFromDb()
-    }
-    timeTriggerScheduler?.refreshFromDb()
+    sunModeScheduler.refreshFromDb()
+    timeTriggerScheduler.refreshFromDb()
 
     res.json({ success: true })
   } catch (err) {
