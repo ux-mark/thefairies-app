@@ -212,7 +212,7 @@ export default function SunModeCard({
       {/* Current mode + sun phase row */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <ModeBadge label={mode} />
-        {sunPhase && (
+        {sunPhase && sunPhase.toLowerCase() !== mode.toLowerCase() && (
           <span className="text-caption text-sm">{sunPhase}</span>
         )}
       </div>
