@@ -772,18 +772,7 @@ export default function DeviceDetailPage() {
                 </div>
               )}
 
-              {/* Last event */}
-              {context.lastEvent && (
-                <p className="text-xs text-caption">
-                  Last event:{' '}
-                  <time
-                    dateTime={context.lastEvent}
-                    className="text-body"
-                  >
-                    {context.lastEvent}
-                  </time>
-                </p>
-              )}
+
             </div>
           </div>
         </section>

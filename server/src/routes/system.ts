@@ -47,13 +47,7 @@ router.get('/current', (_req: Request, res: Response) => {
     const modeRow = getOne<CurrentStateRow>(
       "SELECT * FROM current_state WHERE key = 'mode'",
     )
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
+    const allModes = getAllModeNames()
 
     res.json({
       mode: modeRow?.value ?? 'Evening',
@@ -270,12 +264,6 @@ interface ModeTriggerRow {
   enabled: number
 }
 
-interface SceneRow {
-  name: string
-  icon: string
-  modes: string
-}
-
 const modeRenameSchema = z.object({
   name: z.string().min(1).max(50),
 })
@@ -298,6 +286,10 @@ function upsertState(key: string, value: string): void {
   )
 }
 
+function getAllModeNames(): string[] {
+  return getAll<{ name: string }>('SELECT name FROM modes ORDER BY display_order').map(m => m.name)
+}
+
 function parseTrigger(row: ModeTriggerRow) {
   return {
     id: row.id,
@@ -315,16 +307,10 @@ function parseTrigger(row: ModeTriggerRow) {
 // GET /modes — get all modes with their triggers
 router.get('/modes', (_req: Request, res: Response) => {
   try {
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
+    const allModes = getAllModeNames()
     const sleepRow = getOne<CurrentStateRow>(
       "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
     )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
     const sleepModeName = sleepRow?.value ?? null
 
     const triggers = getAll<ModeTriggerRow>('SELECT * FROM mode_triggers ORDER BY priority DESC')
@@ -351,22 +337,16 @@ router.get('/modes', (_req: Request, res: Response) => {
 router.post('/modes', (req: Request, res: Response) => {
   try {
     const body = modeSchema.parse(req.body)
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
+    const allModes = getAllModeNames()
 
     if (allModes.includes(body.mode)) {
       res.status(409).json({ error: 'Mode already exists' })
       return
     }
 
-    allModes.push(body.mode)
-    upsertState('all_modes', JSON.stringify(allModes))
-    res.json(allModes)
+    const maxOrder = getOne<{ m: number | null }>('SELECT MAX(display_order) as m FROM modes')
+    run('INSERT INTO modes (name, display_order) VALUES (?, ?)', [body.mode, (maxOrder?.m ?? 0) + 1])
+    res.json(getAllModeNames())
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: err.errors })
@@ -389,46 +369,29 @@ router.put('/modes/:mode', (req: Request, res: Response) => {
       return
     }
 
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
-
-    if (!allModes.includes(oldName)) {
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [oldName])
+    if (!modeExists) {
       res.status(404).json({ error: 'Mode not found' })
       return
     }
-    if (allModes.includes(newName)) {
+    const newNameExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [newName])
+    if (newNameExists) {
       res.status(409).json({ error: 'A mode with that name already exists' })
       return
     }
 
-    let updatedScenes = 0
+    // Count scenes that will be affected (for response metadata)
+    const affectedSceneCount = getOne<{ cnt: number }>(
+      'SELECT COUNT(DISTINCT scene_name) as cnt FROM scene_modes WHERE mode_name = ?',
+      [oldName],
+    )
+    const updatedScenes = affectedSceneCount?.cnt ?? 0
 
     const renameTransaction = db.transaction(() => {
-      // 1. Update all_modes array
-      const updatedModes = allModes.map(m => m === oldName ? newName : m)
-      upsertState('all_modes', JSON.stringify(updatedModes))
+      // 1. Rename in modes table — CASCADE propagates to mode_triggers and scene_modes
+      run('UPDATE modes SET name = ? WHERE name = ?', [newName, oldName])
 
-      // 2. Update scenes — replace old mode name in modes JSON arrays
-      const scenes = getAll<SceneRow>('SELECT name, icon, modes FROM scenes')
-      for (const scene of scenes) {
-        let sceneModes: string[] = []
-        try { sceneModes = scene.modes ? JSON.parse(scene.modes) : [] } catch { sceneModes = [] }
-        if (sceneModes.includes(oldName)) {
-          const newModes = sceneModes.map(m => m === oldName ? newName : m)
-          run(
-            `UPDATE scenes SET modes = ?, updated_at = datetime('now') WHERE name = ?`,
-            [JSON.stringify(newModes), scene.name],
-          )
-          updatedScenes++
-        }
-      }
-
-      // 3. If current mode matches old name, update it
+      // 2. If current mode matches old name, update it
       const currentModeRow = getOne<CurrentStateRow>(
         "SELECT value FROM current_state WHERE key = 'mode'",
       )
@@ -436,7 +399,7 @@ router.put('/modes/:mode', (req: Request, res: Response) => {
         upsertState('mode', newName)
       }
 
-      // 4. If pref_night_wake_mode matches, update it
+      // 3. If pref_night_wake_mode matches, update it
       const wakeModeRow = getOne<CurrentStateRow>(
         "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
       )
@@ -444,16 +407,13 @@ router.put('/modes/:mode', (req: Request, res: Response) => {
         upsertState('pref_night_wake_mode', newName)
       }
 
-      // 5. If sleep_mode_name matches, update it
+      // 4. If sleep_mode_name matches, update it
       const sleepModeRow = getOne<CurrentStateRow>(
         "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
       )
       if (sleepModeRow?.value === oldName) {
         upsertState('sleep_mode_name', newName)
       }
-
-      // 6. Update mode_triggers
-      run('UPDATE mode_triggers SET mode_name = ? WHERE mode_name = ?', [newName, oldName])
     })
 
     renameTransaction()
@@ -473,54 +433,34 @@ router.put('/modes/:mode', (req: Request, res: Response) => {
 router.delete('/modes/:mode', (req: Request, res: Response) => {
   try {
     const modeName = decodeURIComponent(String(req.params.mode))
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT * FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try {
-      allModes = modesRow?.value ? JSON.parse(modesRow.value) : []
-    } catch { allModes = [] }
 
-    const idx = allModes.indexOf(modeName)
-    if (idx === -1) {
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [modeName])
+    if (!modeExists) {
       res.status(404).json({ error: 'Mode not found' })
       return
     }
 
-    let affectedScenes = 0
+    // Count affected scenes BEFORE delete for the response
+    const affectedSceneCount = getOne<{ cnt: number }>(
+      'SELECT COUNT(DISTINCT scene_name) as cnt FROM scene_modes WHERE mode_name = ?',
+      [modeName],
+    )
+    const affectedScenes = affectedSceneCount?.cnt ?? 0
 
     const deleteTransaction = db.transaction(() => {
-      // 1. Remove from all_modes
-      const remaining = allModes.filter(m => m !== modeName)
-      upsertState('all_modes', JSON.stringify(remaining))
+      // 1. Delete from modes table — CASCADE propagates to mode_triggers and scene_modes
+      run('DELETE FROM modes WHERE name = ?', [modeName])
 
-      // 2. Remove mode from all scenes
-      const scenes = getAll<SceneRow>('SELECT name, icon, modes FROM scenes')
-      for (const scene of scenes) {
-        let sceneModes: string[] = []
-        try { sceneModes = scene.modes ? JSON.parse(scene.modes) : [] } catch { sceneModes = [] }
-        if (sceneModes.includes(modeName)) {
-          const newModes = sceneModes.filter(m => m !== modeName)
-          run(
-            `UPDATE scenes SET modes = ?, updated_at = datetime('now') WHERE name = ?`,
-            [JSON.stringify(newModes), scene.name],
-          )
-          affectedScenes++
-        }
-      }
-
-      // 3. Delete associated triggers
-      run('DELETE FROM mode_triggers WHERE mode_name = ?', [modeName])
-
-      // 4. If current mode is the deleted one, switch to first remaining (or '')
+      // 2. If current mode is the deleted one, switch to first remaining (or '')
       const currentModeRow = getOne<CurrentStateRow>(
         "SELECT value FROM current_state WHERE key = 'mode'",
       )
       if (currentModeRow?.value === modeName) {
-        upsertState('mode', remaining[0] ?? '')
+        const firstRemaining = getOne<{ name: string }>('SELECT name FROM modes ORDER BY display_order LIMIT 1')
+        upsertState('mode', firstRemaining?.name ?? '')
       }
 
-      // 5. If pref_night_wake_mode matches, clear it
+      // 3. If pref_night_wake_mode matches, clear it
       const wakeModeRow = getOne<CurrentStateRow>(
         "SELECT value FROM current_state WHERE key = 'pref_night_wake_mode'",
       )
@@ -528,7 +468,7 @@ router.delete('/modes/:mode', (req: Request, res: Response) => {
         run("DELETE FROM current_state WHERE key = 'pref_night_wake_mode'")
       }
 
-      // 6. If sleep_mode_name matches, clear it
+      // 4. If sleep_mode_name matches, clear it
       const sleepModeRow = getOne<CurrentStateRow>(
         "SELECT value FROM current_state WHERE key = 'sleep_mode_name'",
       )
@@ -539,13 +479,7 @@ router.delete('/modes/:mode', (req: Request, res: Response) => {
 
     deleteTransaction()
 
-    const finalModesRow = getOne<CurrentStateRow>(
-      "SELECT value FROM current_state WHERE key = 'all_modes'",
-    )
-    let finalModes: string[] = []
-    try { finalModes = finalModesRow?.value ? JSON.parse(finalModesRow.value) : [] } catch { finalModes = [] }
-
-    res.json({ modes: finalModes, affectedScenes })
+    res.json({ modes: getAllModeNames(), affectedScenes })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: msg })
@@ -557,29 +491,19 @@ router.get('/modes/:mode/dependencies', (req: Request, res: Response) => {
   try {
     const modeName = decodeURIComponent(String(req.params.mode))
 
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT value FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try { allModes = modesRow?.value ? JSON.parse(modesRow.value) : [] } catch { allModes = [] }
-    if (!allModes.includes(modeName)) {
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [modeName])
+    if (!modeExists) {
       res.status(404).json({ error: 'Mode not found' })
       return
     }
 
-    // Find scenes whose modes JSON contains this mode name
+    // Find scenes that reference this mode via the junction table
     const matchingScenes = getAll<{ name: string; icon: string }>(
-      `SELECT name, icon FROM scenes WHERE modes LIKE ?`,
-      [`%${modeName}%`],
-    ).filter(scene => {
-      // Confirm it's actually in the parsed array (LIKE can give false positives)
-      try {
-        const m: string[] = JSON.parse(
-          (getOne<{ modes: string }>('SELECT modes FROM scenes WHERE name = ?', [scene.name])?.modes) ?? '[]'
-        )
-        return m.includes(modeName)
-      } catch { return false }
-    })
+      `SELECT DISTINCT s.name, s.icon FROM scenes s
+       JOIN scene_modes sm ON s.name = sm.scene_name
+       WHERE sm.mode_name = ?`,
+      [modeName],
+    )
 
     const currentModeRow = getOne<CurrentStateRow>(
       "SELECT value FROM current_state WHERE key = 'mode'",
@@ -613,12 +537,8 @@ router.post('/modes/:mode/triggers', (req: Request, res: Response) => {
   try {
     const modeName = decodeURIComponent(String(req.params.mode))
 
-    const modesRow = getOne<CurrentStateRow>(
-      "SELECT value FROM current_state WHERE key = 'all_modes'",
-    )
-    let allModes: string[] = []
-    try { allModes = modesRow?.value ? JSON.parse(modesRow.value) : [] } catch { allModes = [] }
-    if (!allModes.includes(modeName)) {
+    const modeExists = getOne<{ name: string }>('SELECT name FROM modes WHERE name = ?', [modeName])
+    if (!modeExists) {
       res.status(404).json({ error: 'Mode not found' })
       return
     }

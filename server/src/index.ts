@@ -80,15 +80,20 @@ app.post('/hubitat', async (req, res) => {
         break
 
       case 'temperature':
-        await motionHandler.handleTemperatureEvent(
-          displayName,
-          Number(eventValue),
+        // Update temperature in hub_devices attributes (source of truth)
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.temperature', ?), updated_at = datetime('now') WHERE label = ?`,
+          [Number(eventValue), displayName],
         )
         break
 
       case 'illuminance':
       case 'lux':
-        await motionHandler.handleLuxEvent(displayName, Number(eventValue))
+        // Update illuminance in hub_devices attributes (source of truth)
+        run(
+          `UPDATE hub_devices SET attributes = json_set(COALESCE(attributes, '{}'), '$.illuminance', ?), updated_at = datetime('now') WHERE label = ?`,
+          [Number(eventValue), displayName],
+        )
         break
 
       case 'battery': {

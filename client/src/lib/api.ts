@@ -48,7 +48,6 @@ export interface RoomDetail extends Room {
 
 export interface Sensor {
   name: string
-  priority_threshold: number
 }
 
 export interface Scene {
@@ -474,7 +473,6 @@ export interface DashboardStats {
 export interface DeviceContext {
   rooms: Array<{ room_name: string; config: Record<string, unknown> }>
   scenes: string[]
-  lastEvent: string | null
   updatedAt: string | null
   historySources: Array<{ source: string; count: number }>
 }
@@ -553,9 +551,9 @@ export const api = {
     getAll: () => fetchApi<Room[]>('/rooms'),
     get: (name: string) =>
       fetchApi<RoomDetail>('/rooms/' + encodeURIComponent(name)),
-    create: (data: Partial<Room>) =>
+    create: (data: Partial<Omit<Room, 'sensors'>>) =>
       fetchApi<Room>('/rooms', { method: 'POST', body: JSON.stringify(data) }),
-    update: (name: string, data: Partial<Room>) =>
+    update: (name: string, data: Partial<Omit<Room, 'sensors'>>) =>
       fetchApi<Room>('/rooms/' + encodeURIComponent(name), {
         method: 'PUT',
         body: JSON.stringify(data),

@@ -92,8 +92,6 @@ type Command =
 interface SceneRow {
   name: string
   icon: string
-  rooms: string
-  modes: string
   commands: string
   tags: string
 }
@@ -211,7 +209,10 @@ export async function activateScene(sceneName: string): Promise<void> {
   }
 
   const commands: Command[] = JSON.parse(scene.commands)
-  const rooms: RoomInfo[] = JSON.parse(scene.rooms)
+  const rooms = getAll<{ room_name: string; priority: number }>(
+    'SELECT room_name, priority FROM scene_rooms WHERE scene_name = ?',
+    [sceneName],
+  ).map(r => ({ name: r.room_name, priority: r.priority }))
 
   log(`Activating scene: ${sceneName}`)
 
@@ -407,7 +408,10 @@ export async function deactivateScene(sceneName: string): Promise<void> {
     throw new Error(`Scene not found: ${sceneName}`)
   }
 
-  const rooms: RoomInfo[] = JSON.parse(scene.rooms)
+  const rooms = getAll<{ room_name: string; priority: number }>(
+    'SELECT room_name, priority FROM scene_rooms WHERE scene_name = ?',
+    [sceneName],
+  ).map(r => ({ name: r.room_name, priority: r.priority }))
   const commands: Command[] = JSON.parse(scene.commands)
 
   log(`Deactivating scene: ${sceneName}`)

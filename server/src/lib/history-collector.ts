@@ -3,12 +3,6 @@ import { getCurrentWeather } from './weather-client.js'
 
 const SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 
-interface RoomReading {
-  name: string
-  temperature: number | null
-  lux: number | null
-}
-
 interface BatteryReading {
   label: string
   battery: string | null
@@ -25,16 +19,23 @@ async function collectSnapshot(): Promise<void> {
     )
 
     const transaction = db.transaction(() => {
-      // Room temperatures and lux
-      const rooms = getAll<RoomReading>(
-        'SELECT name, temperature, lux FROM rooms WHERE temperature IS NOT NULL OR lux IS NOT NULL',
+      // Room temperatures and lux (from sensor devices via hub_devices.attributes)
+      const sensorReadings = getAll<{ room_name: string; temperature: number | null; lux: number | null }>(
+        `SELECT dr.room_name,
+          CAST(json_extract(h.attributes, '$.temperature') AS REAL) as temperature,
+          CAST(json_extract(h.attributes, '$.illuminance') AS REAL) as lux
+         FROM device_rooms dr
+         JOIN hub_devices h ON h.label = dr.device_label
+         WHERE dr.device_type IN ('motion', 'sensor')
+         AND (json_extract(h.attributes, '$.temperature') IS NOT NULL
+           OR json_extract(h.attributes, '$.illuminance') IS NOT NULL)`,
       )
-      for (const room of rooms) {
-        if (room.temperature !== null) {
-          insert.run('temperature', room.name, room.temperature, timestamp)
+      for (const reading of sensorReadings) {
+        if (reading.temperature !== null) {
+          insert.run('temperature', reading.room_name, reading.temperature, timestamp)
         }
-        if (room.lux !== null) {
-          insert.run('lux', room.name, room.lux, timestamp)
+        if (reading.lux !== null) {
+          insert.run('lux', reading.room_name, reading.lux, timestamp)
         }
       }
 

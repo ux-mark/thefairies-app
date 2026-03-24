@@ -682,7 +682,6 @@ export default function RoomDetailPage() {
         timer: effectiveTimer,
         auto: effectiveAuto,
         parent_room: effectiveParent,
-        sensors: effectiveSensors,
       })
       // Save light assignments
       await api.lights.saveForRoom(name!, effectiveAssigned)
@@ -713,6 +712,28 @@ export default function RoomDetailPage() {
             device_type: existing.device_type,
             room_name: name!,
             config: { ...existing.config, ...config },
+          })
+        }
+      }
+      // Save sensor assignments via device_rooms
+      const currentSensorNames = new Set((room?.sensors ?? []).map(s => s.name))
+      const newSensorNames = new Set(effectiveSensors.map(s => s.name))
+
+      // Unassign removed sensors
+      for (const sensor of room?.sensors ?? []) {
+        if (!newSensorNames.has(sensor.name)) {
+          await api.hubitat.unassignDevice(sensor.name, name!)
+        }
+      }
+
+      // Assign new sensors
+      for (const sensor of effectiveSensors) {
+        if (sensor.name && !currentSensorNames.has(sensor.name)) {
+          await api.hubitat.assignDevice({
+            device_id: sensor.name,
+            device_label: sensor.name,
+            device_type: 'motion',
+            room_name: name!,
           })
         }
       }
@@ -874,7 +895,7 @@ export default function RoomDetailPage() {
   }
 
   const handleAddSensor = () => {
-    setSensors([...effectiveSensors, { name: '', priority_threshold: 50 }])
+    setSensors([...effectiveSensors, { name: '' }])
     setDirty(true)
   }
 

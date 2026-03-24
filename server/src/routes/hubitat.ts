@@ -11,8 +11,6 @@ interface HubDeviceRow {
   device_type: string
   capabilities: string
   attributes: string
-  room_name: string | null
-  last_event: string | null
   created_at: string
   updated_at: string
 }

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
-import { getAll, getOne, run } from '../db/index.js'
+import { getAll, getOne, run, db } from '../db/index.js'
 import { activateScene, deactivateScene } from '../lib/scene-executor.js'
 
 const router = Router()
@@ -8,8 +8,6 @@ const router = Router()
 interface SceneRow {
   name: string
   icon: string
-  rooms: string
-  modes: string
   commands: string
   tags: string
   active_from: string | null
@@ -32,18 +30,25 @@ interface LightRoomRow {
 }
 
 function parseScene(row: SceneRow) {
-  let rooms: unknown = []
-  let modes: unknown = []
   let commands: unknown = []
   let tags: unknown = []
-  try { rooms = JSON.parse(row.rooms) } catch { rooms = [] }
-  try { modes = JSON.parse(row.modes) } catch { modes = [] }
   try { commands = JSON.parse(row.commands) } catch { commands = [] }
   try { tags = JSON.parse(row.tags) } catch { tags = [] }
+
+  const rooms = getAll<{ room_name: string; priority: number }>(
+    'SELECT room_name, priority FROM scene_rooms WHERE scene_name = ?',
+    [row.name],
+  ).map(r => ({ name: r.room_name, priority: r.priority }))
+
+  const modes = getAll<{ mode_name: string }>(
+    'SELECT mode_name FROM scene_modes WHERE scene_name = ?',
+    [row.name],
+  ).map(m => m.mode_name)
+
   return {
     ...row,
-    rooms: Array.isArray(rooms) ? rooms : [],
-    modes: Array.isArray(modes) ? modes : [],
+    rooms,
+    modes,
     commands: Array.isArray(commands) ? commands : [],
     tags: Array.isArray(tags) ? tags : [],
     active_from: row.active_from ?? null,
@@ -145,21 +150,41 @@ router.get('/:name', (req: Request, res: Response) => {
 router.post('/', (req: Request, res: Response) => {
   try {
     const body = createSceneSchema.parse(req.body)
-    run(
-      `INSERT INTO scenes (name, icon, rooms, modes, commands, tags, active_from, active_to, auto_activate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        body.name,
-        body.icon ?? '',
-        JSON.stringify(body.rooms ?? []),
-        JSON.stringify(body.modes ?? []),
-        JSON.stringify(body.commands ?? []),
-        JSON.stringify(body.tags ?? []),
-        body.active_from ?? null,
-        body.active_to ?? null,
-        body.auto_activate !== undefined ? Number(body.auto_activate) : 1,
-      ],
-    )
+
+    const createTransaction = db.transaction(() => {
+      run(
+        `INSERT INTO scenes (name, icon, commands, tags, active_from, active_to, auto_activate)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          body.name,
+          body.icon ?? '',
+          JSON.stringify(body.commands ?? []),
+          JSON.stringify(body.tags ?? []),
+          body.active_from ?? null,
+          body.active_to ?? null,
+          body.auto_activate !== undefined ? Number(body.auto_activate) : 1,
+        ],
+      )
+
+      // Insert room assignments
+      if (body.rooms) {
+        const insertRoom = db.prepare('INSERT INTO scene_rooms (scene_name, room_name, priority) VALUES (?, ?, ?)')
+        for (const room of body.rooms) {
+          insertRoom.run(body.name, room.name, Number(room.priority) || 0)
+        }
+      }
+
+      // Insert mode assignments
+      if (body.modes) {
+        const insertMode = db.prepare('INSERT INTO scene_modes (scene_name, mode_name) VALUES (?, ?)')
+        for (const mode of body.modes) {
+          insertMode.run(body.name, mode)
+        }
+      }
+    })
+
+    createTransaction()
+
     const created = getOne<SceneRow>('SELECT * FROM scenes WHERE name = ?', [body.name])
     res.status(201).json(parseScene(created!))
   } catch (err) {
@@ -181,26 +206,47 @@ router.put('/:name', (req: Request, res: Response) => {
       return
     }
     const body = updateSceneSchema.parse(req.body)
-    const fields: string[] = []
-    const values: unknown[] = []
 
-    if (body.name !== undefined) { fields.push('name = ?'); values.push(body.name) }
-    if (body.icon !== undefined) { fields.push('icon = ?'); values.push(body.icon) }
-    if (body.rooms !== undefined) { fields.push('rooms = ?'); values.push(JSON.stringify(body.rooms)) }
-    if (body.modes !== undefined) { fields.push('modes = ?'); values.push(JSON.stringify(body.modes)) }
-    if (body.commands !== undefined) { fields.push('commands = ?'); values.push(JSON.stringify(body.commands)) }
-    if (body.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(body.tags)) }
-    if (body.active_from !== undefined) { fields.push('active_from = ?'); values.push(body.active_from) }
-    if (body.active_to !== undefined) { fields.push('active_to = ?'); values.push(body.active_to) }
-    if (body.auto_activate !== undefined) { fields.push('auto_activate = ?'); values.push(Number(body.auto_activate)) }
+    const updateTransaction = db.transaction(() => {
+      const fields: string[] = []
+      const values: unknown[] = []
 
-    if (fields.length > 0) {
-      fields.push("updated_at = datetime('now')")
-      values.push(req.params.name)
-      run(`UPDATE scenes SET ${fields.join(', ')} WHERE name = ?`, values)
-    }
+      if (body.name !== undefined) { fields.push('name = ?'); values.push(body.name) }
+      if (body.icon !== undefined) { fields.push('icon = ?'); values.push(body.icon) }
+      if (body.commands !== undefined) { fields.push('commands = ?'); values.push(JSON.stringify(body.commands)) }
+      if (body.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(body.tags)) }
+      if (body.active_from !== undefined) { fields.push('active_from = ?'); values.push(body.active_from) }
+      if (body.active_to !== undefined) { fields.push('active_to = ?'); values.push(body.active_to) }
+      if (body.auto_activate !== undefined) { fields.push('auto_activate = ?'); values.push(Number(body.auto_activate)) }
 
-    // If name changed, query by the new name
+      if (fields.length > 0) {
+        fields.push("updated_at = datetime('now')")
+        values.push(req.params.name)
+        run(`UPDATE scenes SET ${fields.join(', ')} WHERE name = ?`, values)
+      }
+
+      // If name changed, ON UPDATE CASCADE propagates to junction tables automatically.
+      // Use the new name for subsequent junction table operations.
+      const lookupName = body.name ?? req.params.name
+
+      if (body.rooms !== undefined) {
+        run('DELETE FROM scene_rooms WHERE scene_name = ?', [lookupName])
+        const insertRoom = db.prepare('INSERT INTO scene_rooms (scene_name, room_name, priority) VALUES (?, ?, ?)')
+        for (const room of body.rooms) {
+          insertRoom.run(lookupName, room.name, Number(room.priority) || 0)
+        }
+      }
+      if (body.modes !== undefined) {
+        run('DELETE FROM scene_modes WHERE scene_name = ?', [lookupName])
+        const insertMode = db.prepare('INSERT INTO scene_modes (scene_name, mode_name) VALUES (?, ?)')
+        for (const mode of body.modes) {
+          insertMode.run(lookupName, mode)
+        }
+      }
+    })
+
+    updateTransaction()
+
     const lookupName = body.name ?? req.params.name
     const updated = getOne<SceneRow>('SELECT * FROM scenes WHERE name = ?', [lookupName])
     res.json(parseScene(updated!))
@@ -238,13 +284,9 @@ router.post('/:name/activate', async (req: Request, res: Response) => {
 
     // Mark all rooms in this scene as having a manual override so motion
     // events do not replace the user's chosen scene until the room goes idle.
-    const scene = getOne<SceneRow>('SELECT * FROM scenes WHERE name = ?', [name])
-    if (scene) {
-      let rooms: { name: string }[] = []
-      try { rooms = JSON.parse(scene.rooms) } catch { /* ignore */ }
-      for (const room of rooms) {
-        run('UPDATE rooms SET scene_manual = 1 WHERE name = ?', [room.name])
-      }
+    const sceneRooms = getAll<{ room_name: string }>('SELECT room_name FROM scene_rooms WHERE scene_name = ?', [name])
+    for (const sr of sceneRooms) {
+      run('UPDATE rooms SET scene_manual = 1 WHERE name = ?', [sr.room_name])
     }
 
     res.json({ success: true, scene: name, action: 'activated' })

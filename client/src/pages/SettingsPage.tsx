@@ -952,6 +952,27 @@ function SubwaySection() {
   )
 }
 
+// ── Shared sensor hook ───────────────────────────────────────────────────────
+
+function useAllSensors() {
+  const { data: rooms } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: api.rooms.getAll,
+  })
+  return useMemo(() => {
+    if (!rooms) return []
+    const sensors: { name: string; room: string }[] = []
+    for (const room of rooms) {
+      if (room.sensors) {
+        for (const sensor of room.sensors) {
+          sensors.push({ name: sensor.name, room: room.name })
+        }
+      }
+    }
+    return sensors
+  }, [rooms])
+}
+
 // ── Indicator Light section ─────────────────────────────────────────────────
 
 function IndicatorSection() {
@@ -967,11 +988,6 @@ function IndicatorSection() {
     queryKey: ['lifx', 'lights'],
     queryFn: api.lifx.getLights,
     retry: false,
-  })
-
-  const { data: rooms } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: api.rooms.getAll,
   })
 
   const saveMutation = useMutation({
@@ -1008,19 +1024,7 @@ function IndicatorSection() {
     saveMutation.mutate({ ...config, ...patch })
   }
 
-  // Extract all sensors from rooms
-  const allSensors = useMemo(() => {
-    if (!rooms) return []
-    const sensors: { name: string; room: string }[] = []
-    for (const room of rooms) {
-      if (room.sensors) {
-        for (const sensor of room.sensors) {
-          sensors.push({ name: sensor.name, room: room.name })
-        }
-      }
-    }
-    return sensors
-  }, [rooms])
+  const allSensors = useAllSensors()
 
   const canTest = config.enabled && config.lightId
 
@@ -1166,11 +1170,6 @@ function WeatherIndicatorSection() {
     retry: false,
   })
 
-  const { data: rooms } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: api.rooms.getAll,
-  })
-
   const saveMutation = useMutation({
     mutationFn: (config: WeatherIndicatorConfig) => api.system.saveWeatherIndicator(config),
     onSuccess: () => {
@@ -1206,19 +1205,7 @@ function WeatherIndicatorSection() {
     saveMutation.mutate({ ...config, ...patch })
   }
 
-  // Extract all sensors from rooms
-  const allSensors = useMemo(() => {
-    if (!rooms) return []
-    const sensors: { name: string; room: string }[] = []
-    for (const room of rooms) {
-      if (room.sensors) {
-        for (const sensor of room.sensors) {
-          sensors.push({ name: sensor.name, room: room.name })
-        }
-      }
-    }
-    return sensors
-  }, [rooms])
+  const allSensors = useAllSensors()
 
   // ── Custom colour state ──────────────────────────────────────────────────
   const { data: customColors } = useQuery({

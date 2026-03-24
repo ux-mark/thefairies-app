@@ -25,23 +25,14 @@ interface RoomRow {
   auto: number
   timer: number
   current_scene: string | null
-  lux: number | null
   scene_manual: number
 }
 
 interface SceneRow {
   name: string
-  rooms: string
-  modes: string
-  commands: string
-  tags: string
   auto_activate: number
   active_from: string | null
   active_to: string | null
-}
-
-interface RoomInfo {
-  name: string
   priority: number
 }
 
@@ -170,90 +161,54 @@ export class MotionHandler {
   }
 
   // Find which room a sensor belongs to by its label
-  // Checks both device_rooms table and rooms.sensors JSON column
+  // Checks device_rooms table for sensor-to-room mapping
   private findRoomForSensor(sensorName: string): DeviceRoomRow | undefined {
-    // First check device_rooms table
-    const fromDeviceRooms = getOne<DeviceRoomRow>(
+    return getOne<DeviceRoomRow>(
       "SELECT * FROM device_rooms WHERE device_label = ? AND device_type IN ('motion', 'sensor')",
       [sensorName],
     )
-    if (fromDeviceRooms) return fromDeviceRooms
-
-    // Also check rooms.sensors JSON — legacy format stores sensors as [{name: "sensorLiving"}]
-    const rooms = getAll<{ name: string; sensors: string }>('SELECT name, sensors FROM rooms')
-    for (const room of rooms) {
-      try {
-        const sensors = JSON.parse(room.sensors || '[]')
-        if (Array.isArray(sensors) && sensors.some((s: { name?: string }) => s.name === sensorName)) {
-          return {
-            id: 0,
-            device_id: sensorName,
-            device_label: sensorName,
-            device_type: 'sensor',
-            room_name: room.name,
-            config: '{}',
-            created_at: '',
-          }
-        }
-      } catch { /* skip malformed JSON */ }
-    }
-    return undefined
   }
 
   // Find the highest-priority scene for a room in the current mode
   // Only considers scenes with auto_activate = true
   private findSceneForRoom(roomName: string): string | null {
     const mode = getCurrentMode()
-    const scenes = getAll<SceneRow>('SELECT * FROM scenes WHERE auto_activate = 1')
 
-    let bestScene: string | null = null
-    let bestPriority = -1
+    // Query for best matching scene: auto_activate, matches room and mode, highest priority
+    const candidates = getAll<{ name: string; priority: number; active_from: string | null; active_to: string | null }>(
+      `SELECT s.name, sr.priority, s.active_from, s.active_to
+       FROM scenes s
+       JOIN scene_rooms sr ON s.name = sr.scene_name
+       JOIN scene_modes sm ON s.name = sm.scene_name
+       WHERE s.auto_activate = 1 AND sr.room_name = ? AND sm.mode_name = ?
+       ORDER BY sr.priority DESC`,
+      [roomName, mode],
+    )
 
-    for (const scene of scenes) {
-      let rooms: RoomInfo[]
-      let modes: string[]
-      try {
-        rooms = JSON.parse(scene.rooms)
-        modes = JSON.parse(scene.modes)
-      } catch {
-        continue
-      }
-
-      // Check seasonal date range
-      if (scene.active_from && scene.active_to) {
+    // Filter by seasonal date range (can't easily do this in SQL with wraparound logic)
+    for (const candidate of candidates) {
+      if (candidate.active_from && candidate.active_to) {
         const now = new Date()
-        const month = now.getMonth() + 1 // 1-12
+        const month = now.getMonth() + 1
         const day = now.getDate()
-        const today = month * 100 + day // e.g. 1225 for Dec 25
+        const today = month * 100 + day
 
-        const [fromM, fromD] = scene.active_from.split('-').map(Number)
-        const [toM, toD] = scene.active_to.split('-').map(Number)
+        const [fromM, fromD] = candidate.active_from.split('-').map(Number)
+        const [toM, toD] = candidate.active_to.split('-').map(Number)
         const from = fromM * 100 + fromD
         const to = toM * 100 + toD
 
-        // Handle ranges that cross year boundary (e.g. Dec 1 -> Jan 6)
         const inRange = from <= to
           ? (today >= from && today <= to)
           : (today >= from || today <= to)
 
-        if (!inRange) continue // Scene is out of season
+        if (!inRange) continue
       }
 
-      // Check if this scene applies to the current mode
-      if (modes.length > 0 && !modes.includes(mode)) continue
-
-      // Check if this scene applies to this room
-      const roomEntry = rooms.find((r) => r?.name === roomName)
-      if (!roomEntry) continue
-
-      const priority = Number(roomEntry.priority) || 0
-      if (priority > bestPriority) {
-        bestPriority = priority
-        bestScene = scene.name
-      }
+      return candidate.name
     }
 
-    return bestScene
+    return null
   }
 
   async handleMotionEvent(
@@ -341,10 +296,19 @@ export class MotionHandler {
         "SELECT value FROM current_state WHERE key = 'pref_lux_threshold'",
       )
       const luxThreshold = luxThresholdPref?.value ? Number(luxThresholdPref.value) : 500
-      if (room.lux !== null && room.lux > luxThreshold) {
-        log(
-          `Room ${roomName} lux ${room.lux} exceeds threshold ${luxThreshold}, skipping activation`,
-        )
+      // Get current lux from the sensor's hub_devices attributes
+      const luxReading = getOne<{ lux: number | null }>(
+        `SELECT json_extract(h.attributes, '$.illuminance') as lux
+         FROM device_rooms dr
+         JOIN hub_devices h ON h.label = dr.device_label
+         WHERE dr.room_name = ? AND dr.device_type IN ('motion', 'sensor')
+         AND json_extract(h.attributes, '$.illuminance') IS NOT NULL
+         LIMIT 1`,
+        [roomName],
+      )
+      const roomLux = luxReading?.lux ?? null
+      if (roomLux !== null && roomLux > luxThreshold) {
+        log(`Room ${roomName} lux ${roomLux} exceeds threshold ${luxThreshold}, skipping activation`)
         return
       }
 
@@ -443,39 +407,6 @@ export class MotionHandler {
         durationMs,
       })
     }
-  }
-
-  async handleTemperatureEvent(
-    sensorName: string,
-    value: number,
-  ): Promise<void> {
-    const deviceRoom = this.findRoomForSensor(sensorName)
-    if (!deviceRoom) return
-
-    run(
-      `UPDATE rooms SET temperature = ?, updated_at = datetime('now') WHERE name = ?`,
-      [value, deviceRoom.room_name],
-    )
-    log(
-      `Temperature update: ${sensorName} = ${value} in ${deviceRoom.room_name}`,
-    )
-  }
-
-  async handleLuxEvent(sensorName: string, value: number): Promise<void> {
-    // Lux sensors may not be typed as 'motion', search all sensor types
-    const deviceRoom =
-      this.findRoomForSensor(sensorName) ??
-      getOne<DeviceRoomRow>(
-        "SELECT * FROM device_rooms WHERE device_label = ? AND device_type = 'sensor'",
-        [sensorName],
-      )
-    if (!deviceRoom) return
-
-    run(
-      `UPDATE rooms SET lux = ?, updated_at = datetime('now') WHERE name = ?`,
-      [value, deviceRoom.room_name],
-    )
-    log(`Lux update: ${sensorName} = ${value} in ${deviceRoom.room_name}`)
   }
 
   cancelRoomTimer(roomName: string): void {

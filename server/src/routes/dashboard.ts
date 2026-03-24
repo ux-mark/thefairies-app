@@ -16,8 +16,6 @@ interface CurrentStateRow {
 
 interface RoomRow {
   name: string
-  temperature: number | null
-  lux: number | null
   current_scene: string | null
   last_active: string | null
   auto: number
@@ -47,18 +45,32 @@ router.get('/summary', async (_req: Request, res: Response) => {
     const modeRow = getOne<CurrentStateRow>(
       "SELECT value FROM current_state WHERE key = 'mode'",
     )
-    const allModesRow = getOne<CurrentStateRow>(
-      "SELECT value FROM current_state WHERE key = 'all_modes'",
-    )
     const mode = modeRow?.value || 'Morning'
-    const allModes: string[] = allModesRow?.value
-      ? JSON.parse(allModesRow.value)
-      : []
+    const allModes = getAll<{ name: string }>('SELECT name FROM modes ORDER BY display_order').map(m => m.name)
 
-    // Rooms with sensor data
-    const rooms = getAll<RoomRow>(
-      'SELECT name, temperature, lux, current_scene, last_active, auto FROM rooms ORDER BY display_order',
+    // Rooms base data
+    const roomRows = getAll<RoomRow>(
+      'SELECT name, current_scene, last_active, auto FROM rooms ORDER BY display_order',
     )
+
+    // Get temperature and lux from sensor devices via hub_devices.attributes
+    const sensorData = getAll<{ room_name: string; temperature: number | null; lux: number | null }>(
+      `SELECT dr.room_name,
+        CAST(json_extract(h.attributes, '$.temperature') AS REAL) as temperature,
+        CAST(json_extract(h.attributes, '$.illuminance') AS REAL) as lux
+       FROM device_rooms dr
+       JOIN hub_devices h ON h.label = dr.device_label
+       WHERE dr.device_type IN ('motion', 'sensor')
+       AND (json_extract(h.attributes, '$.temperature') IS NOT NULL
+         OR json_extract(h.attributes, '$.illuminance') IS NOT NULL)`,
+    )
+    const sensorByRoom = new Map(sensorData.map(s => [s.room_name, s]))
+
+    const rooms = roomRows.map(r => ({
+      ...r,
+      temperature: sensorByRoom.get(r.name)?.temperature ?? null,
+      lux: sensorByRoom.get(r.name)?.lux ?? null,
+    }))
 
     // Battery devices
     const batteryDevices = getAll<BatteryDeviceRow>(
@@ -84,7 +96,7 @@ router.get('/summary', async (_req: Request, res: Response) => {
     // Power-reporting devices
     const powerDevices = getAll<PowerDeviceRow>(
       `SELECT h.id, h.label,
-              COALESCE(dr.room_name, h.room_name) as room_name,
+              dr.room_name,
               json_extract(h.attributes, '$.power') as power,
               json_extract(h.attributes, '$.energy') as energy,
               json_extract(h.attributes, '$.switch') as switch_state
@@ -332,9 +344,9 @@ router.get('/device/:id/context', (req: Request, res: Response) => {
       })
       .map((s) => s.name)
 
-    // Last event from hub_devices
-    const device = getOne<{ last_event: string | null; updated_at: string }>(
-      'SELECT last_event, updated_at FROM hub_devices WHERE id = ?',
+    // Last updated from hub_devices
+    const device = getOne<{ updated_at: string }>(
+      'SELECT updated_at FROM hub_devices WHERE id = ?',
       [Number(deviceId)],
     )
 
@@ -356,7 +368,6 @@ router.get('/device/:id/context', (req: Request, res: Response) => {
         config: JSON.parse(r.config || '{}'),
       })),
       scenes: scenesUsing,
-      lastEvent: device?.last_event || null,
       updatedAt: device?.updated_at || null,
       historySources,
     })
@@ -371,10 +382,26 @@ router.get('/room/:name', (req: Request, res: Response) => {
   try {
     const roomName = decodeURIComponent(String(req.params.name))
 
-    const room = getOne<{ temperature: number | null; lux: number | null; last_active: string | null }>(
-      'SELECT temperature, lux, last_active FROM rooms WHERE name = ?',
+    const roomBase = getOne<{ last_active: string | null }>(
+      'SELECT last_active FROM rooms WHERE name = ?',
       [roomName],
     )
+    const sensorReading = getOne<{ temperature: number | null; lux: number | null }>(
+      `SELECT CAST(json_extract(h.attributes, '$.temperature') AS REAL) as temperature,
+        CAST(json_extract(h.attributes, '$.illuminance') AS REAL) as lux
+       FROM device_rooms dr
+       JOIN hub_devices h ON h.label = dr.device_label
+       WHERE dr.room_name = ? AND dr.device_type IN ('motion', 'sensor')
+       AND (json_extract(h.attributes, '$.temperature') IS NOT NULL
+         OR json_extract(h.attributes, '$.illuminance') IS NOT NULL)
+       LIMIT 1`,
+      [roomName],
+    )
+    const room = {
+      temperature: sensorReading?.temperature ?? null,
+      lux: sensorReading?.lux ?? null,
+      last_active: roomBase?.last_active ?? null,
+    }
 
     const temperatureHistory = getAll<{ value: number; recorded_at: string }>(
       `SELECT value, recorded_at FROM device_history
@@ -439,8 +466,8 @@ router.get('/room/:name', (req: Request, res: Response) => {
     })
 
     res.json({
-      temperature: room?.temperature ?? null, lux: room?.lux ?? null,
-      lastActive: room?.last_active ?? null, temperatureHistory,
+      temperature: room.temperature, lux: room.lux,
+      lastActive: room.last_active, temperatureHistory,
       totalWatts, devices, events24h, hourlyPattern, batteryDevices,
     })
   } catch (err) {

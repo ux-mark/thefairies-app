@@ -46,7 +46,7 @@ export default function RoomsPage() {
 
   const createMutation = useMutation({
     mutationFn: (name: string) =>
-      api.rooms.create({ name, display_order: (rooms?.length ?? 0) + 1, auto: false, timer: 0, sensors: [], tags: [] }),
+      api.rooms.create({ name, display_order: (rooms?.length ?? 0) + 1, auto: false, timer: 0, tags: [] }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       setDialogOpen(false)
