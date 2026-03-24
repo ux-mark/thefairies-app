@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   Plus,
-  ChevronRight,
   Sparkles,
   DoorOpen,
 } from 'lucide-react'
@@ -68,7 +67,7 @@ export default function RoomsPage() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-body text-sm font-medium">All Rooms</h2>
+        <h2 className="text-heading text-sm font-semibold">All Rooms</h2>
         <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
           <Dialog.Trigger asChild>
             <button className="flex min-h-[44px] items-center gap-1.5 rounded-lg bg-fairy-500 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-fairy-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500">
@@ -137,7 +136,7 @@ export default function RoomsPage() {
               <Link
                 key={room.name}
                 to={`/rooms/${encodeURIComponent(room.name)}`}
-                className="card group flex items-center gap-4 rounded-xl border p-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                className="card flex items-center gap-4 rounded-xl border p-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
               >
                 <div className="min-w-0 flex-1">
                   <h3 className="text-heading text-base font-semibold">
@@ -165,7 +164,6 @@ export default function RoomsPage() {
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="text-caption h-5 w-5 shrink-0 transition-colors group-hover:text-[var(--text-secondary)]" />
               </Link>
             ))}
         </div>
