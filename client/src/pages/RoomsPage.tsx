@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   Plus,
-  ChevronRight,
   Sparkles,
   DoorOpen,
 } from 'lucide-react'
@@ -137,7 +136,7 @@ export default function RoomsPage() {
               <Link
                 key={room.name}
                 to={`/rooms/${encodeURIComponent(room.name)}`}
-                className="card group flex items-center gap-4 rounded-xl border p-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                className="card flex items-center gap-4 rounded-xl border p-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
               >
                 <div className="min-w-0 flex-1">
                   <h3 className="text-heading text-base font-semibold">
@@ -165,7 +164,6 @@ export default function RoomsPage() {
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="text-caption h-5 w-5 shrink-0 transition-colors group-hover:text-[var(--text-secondary)]" />
               </Link>
             ))}
         </div>
