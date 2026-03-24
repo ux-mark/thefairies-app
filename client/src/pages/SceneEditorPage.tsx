@@ -97,6 +97,7 @@ function LightEditorCard({
             : undefined
         const lifxBrightness = update.brightness !== undefined ? update.brightness / 100 : undefined
         api.lifx.setState(state.selector, {
+          power: 'on',
           color: lifxColor,
           brightness: lifxBrightness,
           duration: 0.3,
@@ -224,9 +225,12 @@ function LightEditorCard({
               if (update.color) {
                 next.hue = update.color.h
                 next.saturation = update.color.s
+                // For colour lights, v encodes brightness — keep them in sync.
+                next.brightness = update.color.v
               }
               if (update.kelvin !== undefined) next.kelvin = update.kelvin
-              if (update.brightness !== undefined)
+              // For kelvin lights, brightness comes from the dedicated slider.
+              if (!state.hasColor && update.brightness !== undefined)
                 next.brightness = update.brightness
               onChange(next)
             }}
