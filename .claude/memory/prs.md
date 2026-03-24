@@ -129,9 +129,9 @@
 ## PR #17 — Add Insights dashboard with energy monitoring, device intelligence, and room analytics
 - **Branch**: feature/dashboard-insights → dev
 - **Created**: 2026-03-23
-- **Status**: open
-- **Merge date**: —
-- **Branch cleanup**: pending
+- **Status**: merged
+- **Merge date**: 2026-03-23
+- **Branch cleanup**: done
 - **Summary**: Complete Insights experience: Insights page with Energy/Battery/Environment/Activity/Sun cards, attention bar with CTAs, home summary strip, multi-room overlay charts, device detail with headline insights and layered drill-down, room intelligence on room detail pages, activity tracking (room_activity table), insights engine with trend analysis and anomaly detection, device history infrastructure, energy/battery data on device cards, configurable currency and energy rate, Socket.io real-time updates. 4 personas documented.
 - **Files**: 39 files changed (+6,467 lines) — 12 commits
 
@@ -143,3 +143,17 @@
 - **Branch cleanup**: done
 - **Summary**: Updated default exclude rooms for Nighttime and Guest Night scenes
 - **Files**: `server/src/routes/system.ts`
+
+## PR #19 — Add LIFX light retry mechanism and notification system
+- **Branch**: feature/notifications-and-retry → dev
+- **Created**: 2026-03-24
+- **Status**: open
+- **Summary**: LIFX batch setStates now inspects per-light results and retries failed lights individually (2s delay, 2 retries, rate limit guard). New notification system with dedup, severity levels, bell icon + panel in header, Socket.io real-time push. Battery and device error notifications wired in. Insights AttentionBar shows device errors.
+- **Files**: 14 files (7 server, 7 client) — lifx-client.ts, scene-executor.ts, notification-service.ts (new), insights-engine.ts, db/index.ts, index.ts, routes/system.ts, api.ts, useSocket.ts, useNotifications.ts (new), NotificationBell.tsx (new), NotificationPanel.tsx (new), AppLayout.tsx, LogsPage.tsx
+
+## PR #18 — Fix colour picker: use rectangle for brightness, remove redundant slider
+- **Branch**: fix/color-picker-brightness-ux → dev
+- **Created**: 2026-03-23
+- **Status**: open
+- **Summary**: HSV rectangle's V-axis now drives brightness directly; separate brightness slider removed for colour lights (kept for kelvin). Two controls instead of three.
+- **Files**: `client/src/components/ui/ColorBrightnessPicker.tsx`, `client/src/pages/SceneEditorPage.tsx`

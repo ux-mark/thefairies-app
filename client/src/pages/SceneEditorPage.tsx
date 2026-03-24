@@ -97,6 +97,7 @@ function LightEditorCard({
             : undefined
         const lifxBrightness = update.brightness !== undefined ? update.brightness / 100 : undefined
         api.lifx.setState(state.selector, {
+          power: 'on',
           color: lifxColor,
           brightness: lifxBrightness,
           duration: 0.3,
