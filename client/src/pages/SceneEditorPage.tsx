@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { BackLink } from '@/components/ui/BackLink'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
