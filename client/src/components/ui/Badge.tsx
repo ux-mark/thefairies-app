@@ -33,15 +33,15 @@ const typeLabels: Record<string, string> = {
   fairy: 'Fairy',
   motion: 'Motion',
   unknown: 'Device',
-  // Kasa types
+  // Kasa types — all shown as "Kasa plug" to the user
   kasa_plug: 'Kasa plug',
-  kasa_strip: 'Kasa strip',
-  kasa_outlet: 'Kasa outlet',
-  kasa_switch: 'Kasa switch',
-  kasa_dimmer: 'Kasa dimmer',
+  kasa_strip: 'Kasa plug',
+  kasa_outlet: 'Kasa plug',
+  kasa_switch: 'Kasa plug',
+  kasa_dimmer: 'Kasa plug',
   plug: 'Kasa plug',
-  strip: 'Kasa strip',
-  outlet: 'Kasa outlet',
+  strip: 'Kasa plug',
+  outlet: 'Kasa plug',
 }
 
 interface TypeBadgeProps {
