@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import type { Theme } from '@/hooks/useTheme'
+import { useDashboardSocket } from '@/hooks/useSocket'
 import ToastContainer from '@/components/ui/Toast'
 import NotificationBell from '@/components/notifications/NotificationBell'
 
@@ -56,6 +57,8 @@ function ThemeToggle() {
 
 export default function AppLayout() {
   const location = useLocation()
+  useDashboardSocket()
+
   const { data: system } = useQuery({
     queryKey: ['system', 'current'],
     queryFn: api.system.getCurrent,

@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { getAll, getOne, run } from '../db/index.js'
 import { kasaClient } from '../lib/kasa-client.js'
+import { emit } from '../lib/socket.js'
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
@@ -81,6 +82,7 @@ router.post('/devices/:id/command', async (req: Request, res: Response) => {
 
     const deviceId = String(req.params.id)
     await kasaClient.sendCommand(deviceId, command, value)
+    emit('device:command', { deviceId, command })
     res.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

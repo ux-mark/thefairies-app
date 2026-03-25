@@ -256,35 +256,68 @@ function QuickActions() {
 
   const allOffMutation = useMutation({
     mutationFn: api.system.allOff,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(r => ({ ...r, current_scene: null }))
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['system'] })
       queryClient.invalidateQueries({ queryKey: ['lifx'] })
       toast({ message: 'All devices turned off' })
     },
-    onError: () => toast({ message: 'Failed to turn off devices', type: 'error' }),
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to turn off devices', type: 'error' })
+    },
   })
 
   const nighttimeMutation = useMutation({
     mutationFn: api.system.nighttime,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(r => ({ ...r, current_scene: null }))
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['system'] })
       queryClient.invalidateQueries({ queryKey: ['lifx'] })
       toast({ message: 'Nighttime mode activated' })
     },
-    onError: () => toast({ message: 'Failed to set nighttime', type: 'error' }),
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to set nighttime', type: 'error' })
+    },
   })
 
   const guestNightMutation = useMutation({
     mutationFn: api.system.guestNight,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['rooms'] })
+      const previous = queryClient.getQueryData<Room[]>(['rooms'])
+      queryClient.setQueryData<Room[]>(['rooms'], old =>
+        old?.map(r => ({ ...r, current_scene: null }))
+      )
+      return { previous }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] })
       queryClient.invalidateQueries({ queryKey: ['system'] })
       queryClient.invalidateQueries({ queryKey: ['lifx'] })
       toast({ message: 'Guest night mode activated' })
     },
-    onError: () => toast({ message: 'Failed to set guest night', type: 'error' }),
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['rooms'], context.previous)
+      toast({ message: 'Failed to set guest night', type: 'error' })
+    },
   })
 
   const anyPending = allOffMutation.isPending || nighttimeMutation.isPending || guestNightMutation.isPending

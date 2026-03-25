@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { useDashboardSocket } from '@/hooks/useSocket'
 import AttentionBar from '@/components/dashboard/AttentionBar'
 import HomeSummaryStrip from '@/components/dashboard/HomeSummaryStrip'
 import EnergyCard from '@/components/dashboard/EnergyCard'
@@ -54,8 +53,6 @@ function DashboardError({ message }: { message: string }) {
 }
 
 export default function DashboardPage() {
-  useDashboardSocket()
-
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: api.dashboard.getSummary,

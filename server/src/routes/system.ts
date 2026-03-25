@@ -18,6 +18,7 @@ import { MTA_STOPS, searchStops } from '../lib/mta-stops.js'
 import { mtaIndicator } from '../lib/mta-indicator.js'
 import { weatherIndicator, WEATHER_COLORS } from '../lib/weather-indicator.js'
 import { motionHandler } from '../lib/motion-handler.js'
+import { emit } from '../lib/socket.js'
 
 const router = Router()
 
@@ -140,6 +141,7 @@ router.put('/mode', (req: Request, res: Response) => {
       )
     }
 
+    emit('mode:change', { mode: body.mode })
     res.json({ mode: body.mode })
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -1313,6 +1315,7 @@ router.post('/all-off', async (_req: Request, res: Response) => {
       [`All Off executed: ${actions.length} actions`],
     )
 
+    emit('scene:change', { action: 'all_off' })
     res.json({ success: true, actions })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -1357,6 +1360,8 @@ router.post('/nighttime', async (_req: Request, res: Response) => {
       [`Nighttime executed: excluded rooms [${excludeRooms.join(', ')}], locked ${roomsToLock.length} rooms, wake mode: ${wakeMode}, ${actions.length} actions`],
     )
 
+    emit('mode:change', { mode: 'Sleep Time' })
+    emit('scene:change', { action: 'nighttime' })
     res.json({ success: true, mode: 'Sleep Time', excludeRooms, lockedRooms: roomsToLock, wakeMode, actions })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -1409,6 +1414,8 @@ router.post('/guest-night', async (_req: Request, res: Response) => {
       [`Guest Night executed: excluded rooms [${excludeRooms.join(', ')}], locked ${roomsToLock.length} rooms, wake mode: ${wakeMode}, ${actions.length} actions`],
     )
 
+    emit('mode:change', { mode: 'Sleep Time' })
+    emit('scene:change', { action: 'guest_night' })
     res.json({ success: true, mode: 'Sleep Time', excludeRooms, lockedRooms: roomsToLock, wakeMode, actions })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

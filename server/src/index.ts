@@ -24,6 +24,7 @@ import { weatherIndicator } from './lib/weather-indicator.js'
 import { startHistoryCollector, stopHistoryCollector } from './lib/history-collector.js'
 import { notificationService } from './lib/notification-service.js'
 import { startKasaPoller, stopKasaPoller } from './lib/kasa-poller.js'
+import { setSocketServer } from './lib/socket.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -67,6 +68,7 @@ const httpServer = createServer(app)
 const io = new SocketServer(httpServer, {
   cors: { origin: CORS_ORIGIN },
 })
+setSocketServer(io)
 
 // Mount API routes
 app.use('/api/lifx', lifxRoutes)

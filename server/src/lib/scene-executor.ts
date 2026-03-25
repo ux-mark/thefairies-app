@@ -6,6 +6,7 @@ import { twinklyClient } from './twinkly-client.js'
 import { fairyDeviceClient } from './fairy-device-client.js'
 import { timerManager } from './timer-manager.js'
 import { getAll, getOne, run } from '../db/index.js'
+import { emit } from './socket.js'
 
 interface LightCommand {
   type: 'lifx_light'
@@ -447,6 +448,8 @@ export async function activateScene(sceneName: string, visitedScenes: Set<string
     `UPDATE scenes SET last_activated_at = datetime('now') WHERE name = ?`,
     [sceneName],
   )
+
+  emit('scene:change', { scene: sceneName, action: 'activated', rooms: rooms.map(r => r.name) })
 }
 
 export async function deactivateScene(sceneName: string): Promise<void> {
@@ -606,4 +609,6 @@ export async function deactivateScene(sceneName: string): Promise<void> {
       [room.name],
     )
   }
+
+  emit('scene:change', { scene: sceneName, action: 'deactivated', rooms: rooms.map(r => r.name) })
 }
