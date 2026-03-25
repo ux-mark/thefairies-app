@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-03-25 — Replace scene priority with explicit room_auto_scenes table
+- Scene priority (0-100 on scene_rooms) removed — confusing, unnecessary since users set up one auto scene per room+mode
+- New `room_auto_scenes` table: explicit lookup for "what scene does motion trigger for this room+mode?"
+- Each room+mode can have zero or one auto scene, enforced by composite PK
+- `auto_activate` stays as a scene-level eligibility flag — scenes must have `auto_activate = 1` to be set as auto
+- Auto scene assignment managed from Room Detail page, not Scene Editor
+- Homepage shows ALL scenes for room+mode (not just auto_activate ones), with motion icon marking the auto scene
+- Rationale: priority was a confusing abstraction; explicit auto assignment is clearer and matches the actual use case
+- Alternatives considered: keeping priority with better UI — rejected because the underlying model was wrong
+
 ## 2026-03-24 — Direct Kasa integration via python-kasa sidecar
 - Replaced Hubitat-mediated Kasa device control with direct local-network communication
 - Python FastAPI sidecar (port 3002) using python-kasa library for device discovery, control, and energy monitoring
