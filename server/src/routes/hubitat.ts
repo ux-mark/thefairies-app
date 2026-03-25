@@ -141,11 +141,25 @@ router.get('/devices/sync', async (_req: Request, res: Response) => {
       )
     }
 
+    // Remove hub_devices that no longer exist on the hub
+    const hubIds = new Set(devices.map((d) => d.id))
+    const existingRows = getAll<{ id: number; label: string }>('SELECT id, label FROM hub_devices')
+    let removedCount = 0
+    for (const row of existingRows) {
+      if (!hubIds.has(row.id)) {
+        run('DELETE FROM device_rooms WHERE device_id = ?', [String(row.id)])
+        run('DELETE FROM hub_devices WHERE id = ?', [row.id])
+        removedCount++
+        console.log(`[hubitat-sync] Removed device no longer on hub: ${row.label} (${row.id})`)
+      }
+    }
+
     const rows = getAll<HubDeviceRow>('SELECT * FROM hub_devices ORDER BY label')
     res.json({
       synced: devices.length,
       new: newCount,
       updated: updatedCount,
+      removed: removedCount,
       devices: rows.map((r) => ({
         ...r,
         capabilities: JSON.parse(r.capabilities),
