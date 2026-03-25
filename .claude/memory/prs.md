@@ -215,3 +215,10 @@
 - **Branch cleanup**: done
 - **Summary**: Even spacing between RoomDetailPage accordion sections (space-y-4 container replacing mixed mb-8/mb-4). Removed expand chevron, inline brightness slider, and LightUsagePanel from LIFX light cards on DevicesPage — lights now link to /lights/:id for details. Added TypeBadge to light cards for visual consistency with hub device cards.
 - **Files**: RoomDetailPage.tsx, RoomIntelligence.tsx, DevicesPage.tsx
+
+## PR #26 — Replace Hubitat Kasa integration with direct python-kasa sidecar
+- **Branch**: feature/kasa-direct-integration → dev
+- **Created**: 2026-03-24
+- **Status**: open
+- **Summary**: Python FastAPI sidecar using python-kasa for direct local Kasa device control. New kasa_devices table, Express HTTP client + poller, Kasa API routes, scene/system integration, Kasa Setup page, DevicesPage/DeviceDetailPage Kasa support, HS300 per-outlet monitoring, PM2 config, deploy script updates.
+- **Files**: 8 new + 14 modified — server/kasa/* (4 Python), kasa-client.ts, kasa-poller.ts, routes/kasa.ts, KasaSetupPage.tsx, db/index.ts, index.ts, scene-executor.ts, scenes.ts, system.ts, history-collector.ts, api.ts, DevicesPage.tsx, DeviceDetailPage.tsx, SettingsPage.tsx, App.tsx, Badge.tsx, ecosystem.config.cjs, deploy-to-pi.sh, .gitignore, PROJECT_SPEC.md
