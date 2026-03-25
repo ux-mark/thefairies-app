@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import type { Theme } from '@/hooks/useTheme'
 import { useDashboardSocket } from '@/hooks/useSocket'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import ToastContainer from '@/components/ui/Toast'
 import NotificationBell from '@/components/notifications/NotificationBell'
 
@@ -58,6 +59,7 @@ function ThemeToggle() {
 export default function AppLayout() {
   const location = useLocation()
   useDashboardSocket()
+  useScrollRestoration()
 
   const { data: system } = useQuery({
     queryKey: ['system', 'current'],
