@@ -148,6 +148,21 @@ class DeviceManager:
                 logger.warning(f"Post-command update failed for {device_id}: {exc}")
 
     # ------------------------------------------------------------------
+    # Rename
+    # ------------------------------------------------------------------
+
+    async def rename_device(self, device_id: str, new_alias: str):
+        """Rename a device on the hardware (persisted on the device itself)."""
+        device = self.get_device(device_id)
+        if not device:
+            raise ValueError(f"Device not found: {device_id}")
+
+        async with self._get_lock(device_id):
+            await device.set_alias(new_alias)
+            await device.update()
+            logger.info(f"Renamed {device_id} to {new_alias!r}")
+
+    # ------------------------------------------------------------------
     # Energy meter
     # ------------------------------------------------------------------
 

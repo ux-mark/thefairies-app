@@ -86,6 +86,10 @@ class KasaClient {
     return data
   }
 
+  async renameDevice(id: string, alias: string): Promise<void> {
+    await this.api.post(`/devices/${id}/rename`, { alias })
+  }
+
   async discover(): Promise<{ discovered: number; total: number }> {
     const { data } = await this.api.post<{ discovered: number; total: number }>('/discover')
     return data

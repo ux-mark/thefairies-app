@@ -97,6 +97,28 @@ async def send_command(device_id: str, body: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Rename
+# ---------------------------------------------------------------------------
+
+
+@app.post("/devices/{device_id}/rename", summary="Rename a device")
+async def rename_device(device_id: str, body: dict) -> dict:
+    """Set the device alias on the hardware. The new name persists on the device itself."""
+    alias = body.get("alias")
+    if not alias or not isinstance(alias, str) or not alias.strip():
+        raise HTTPException(status_code=422, detail="Field 'alias' is required")
+
+    try:
+        await manager.rename_device(device_id, alias.strip())
+        return {"success": True, "label": alias.strip()}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Rename error for {device_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Energy meter
 # ---------------------------------------------------------------------------
 

@@ -124,8 +124,8 @@ router.get('/devices/:id/energy/monthly', async (req: Request, res: Response) =>
   }
 })
 
-// POST /devices/:id/label — rename device label
-router.post('/devices/:id/label', (req: Request, res: Response) => {
+// POST /devices/:id/label — rename device on hardware, update DB and history
+router.post('/devices/:id/label', async (req: Request, res: Response) => {
   try {
     const { label } = req.body as { label?: string }
     if (!label || typeof label !== 'string' || !label.trim()) {
@@ -139,10 +139,31 @@ router.post('/devices/:id/label', (req: Request, res: Response) => {
       return
     }
 
+    const oldLabel = existing.label
+    const newLabel = label.trim()
+
+    // 1. Rename on the actual Kasa hardware (persists on the device)
+    const deviceId = String(req.params.id)
+    await kasaClient.renameDevice(deviceId, newLabel)
+
+    // 2. Update the DB
     run(
       "UPDATE kasa_devices SET label = ?, updated_at = datetime('now') WHERE id = ?",
-      [label.trim(), req.params.id],
+      [newLabel, req.params.id],
     )
+
+    // 3. Migrate device_history records so charts stay connected
+    if (oldLabel !== newLabel) {
+      run(
+        'UPDATE device_history SET source_id = ? WHERE source_id = ?',
+        [newLabel, oldLabel],
+      )
+      // Also update device_rooms if this device is assigned to a room
+      run(
+        'UPDATE device_rooms SET device_label = ? WHERE device_id = ?',
+        [newLabel, req.params.id],
+      )
+    }
 
     const updated = getOne<KasaDeviceRow>('SELECT * FROM kasa_devices WHERE id = ?', [req.params.id])
     res.json(parseDeviceRow(updated!))
