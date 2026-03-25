@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useMatch, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Power } from 'lucide-react'
+import { ChevronRight, Pencil, Check, X, Power } from 'lucide-react'
 import { api, type DeviceInsightsData, type KasaDevice } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
@@ -500,6 +500,8 @@ function KasaDeviceDetail({ id }: { id: string }) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [period, setPeriod] = useState<Period>('24h')
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
 
   const {
     data: device,
@@ -522,6 +524,16 @@ function KasaDeviceDetail({ id }: { id: string }) {
       toast({ message: `${device?.label ?? 'Device'} toggled` })
     },
     onError: () => toast({ message: `Failed to control ${device?.label ?? 'device'}`, type: 'error' }),
+  })
+
+  const renameMutation = useMutation({
+    mutationFn: (label: string) => api.kasa.renameDevice(id, label),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kasa'] })
+      setIsRenaming(false)
+      toast({ message: 'Device renamed' })
+    },
+    onError: () => toast({ message: 'Failed to rename device', type: 'error' }),
   })
 
   if (isLoading) {
@@ -587,8 +599,57 @@ function KasaDeviceDetail({ id }: { id: string }) {
         <BackLink to="/devices" label="All Devices" />
 
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-heading text-xl font-semibold">{device.label}</h1>
+          <div className="min-w-0 flex-1">
+            {isRenaming ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const trimmed = renameValue.trim()
+                  if (trimmed && trimmed !== device.label) {
+                    renameMutation.mutate(trimmed)
+                  } else {
+                    setIsRenaming(false)
+                  }
+                }}
+              >
+                <input
+                  autoFocus
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xl font-semibold text-heading focus:border-fairy-500 focus:outline-none"
+                  aria-label="Device name"
+                />
+                <button
+                  type="submit"
+                  disabled={renameMutation.isPending}
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-emerald-400 transition-colors hover:bg-emerald-500/15"
+                  aria-label="Save name"
+                >
+                  <Check className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsRenaming(false)}
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-body transition-colors hover:bg-white/5"
+                  aria-label="Cancel rename"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-heading text-xl font-semibold">{device.label}</h1>
+                <button
+                  onClick={() => { setRenameValue(device.label); setIsRenaming(true) }}
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-caption transition-colors hover:text-heading hover:bg-white/5"
+                  aria-label="Rename device"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <TypeBadge type={device.device_type} label={badgeLabel} />
               <span
