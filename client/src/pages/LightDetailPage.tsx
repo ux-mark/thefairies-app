@@ -126,7 +126,7 @@ export default function LightDetailPage() {
             {light.connected ? <Wifi className="h-3 w-3" aria-hidden="true" /> : <WifiOff className="h-3 w-3" aria-hidden="true" />}
             {light.connected ? 'Connected' : 'Disconnected'}
           </span>
-          <div ref={lightRoomDropdownRef} className="relative">
+          <div ref={lightRoomDropdownRef} className="relative inline-flex">
             <button
               onClick={() => setLightRoomDropdownOpen(!lightRoomDropdownOpen)}
               className={cn(

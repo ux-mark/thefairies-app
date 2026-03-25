@@ -704,7 +704,7 @@ function KasaDeviceDetail({ id }: { id: string }) {
                 />
                 {device.is_online ? 'Online' : 'Offline'}
               </span>
-              <div ref={roomDropdownRef} className="relative">
+              <div ref={roomDropdownRef} className="relative inline-flex">
                 <button
                   onClick={() => setRoomDropdownOpen(!roomDropdownOpen)}
                   className={cn(
@@ -1023,7 +1023,7 @@ function HubDeviceDetail({ id }: { id: string }) {
           {device.device_name && device.device_name !== device.label && (
             <span className="text-xs text-caption">{device.device_name}</span>
           )}
-          <div ref={hubRoomDropdownRef} className="relative">
+          <div ref={hubRoomDropdownRef} className="relative inline-flex">
             <button
               onClick={() => setHubRoomDropdownOpen(!hubRoomDropdownOpen)}
               className={cn(
