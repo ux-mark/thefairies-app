@@ -105,7 +105,7 @@ export default function AppLayout() {
       {/* Main content */}
       <main className="flex-1 pb-20 md:pb-0">
         {/* Header */}
-        <header className="chrome flex items-center justify-between border-b px-4 py-3 md:px-6 md:py-4">
+        <header className="chrome sticky top-0 z-30 flex items-center justify-between border-b px-4 py-3 md:px-6 md:py-4">
           <div className="flex items-center gap-2">
             <HomeFairyIcon className="h-6 w-6 md:hidden" />
             <h1 className="text-heading text-lg font-semibold md:hidden">
