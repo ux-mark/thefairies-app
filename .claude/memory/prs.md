@@ -234,9 +234,11 @@
 - **Summary**: Both sun and time schedulers unconditionally blocked all transitions during sleep mode, including the wake mode trigger. Fixed to allow wake mode transitions through the sleep guard.
 - **Files**: server/src/lib/sun-mode-scheduler.ts, server/src/lib/time-trigger-scheduler.ts
 
-## PR #29 — Replace scene priority with explicit room auto scenes
+## PR #29 — Simplify scene model: default scenes per room+mode
 - **Branch**: feature/replace-priority-with-auto-scenes → dev
 - **Created**: 2026-03-25
-- **Status**: open
-- **Summary**: Replace confusing scene priority (0-100) with room_auto_scenes table. Each room+mode can have one auto scene. Migration preserves existing data. New API endpoints, mode-grouped Room Detail UI with radio controls, all scenes shown on Homepage with Activity icon.
-- **Files**: server/src/db/index.ts, server/src/routes/rooms.ts, server/src/routes/scenes.ts, server/src/lib/motion-handler.ts, server/src/lib/scene-executor.ts, client/src/lib/api.ts, client/src/lib/scene-utils.ts, client/src/pages/HomePage.tsx, client/src/pages/RoomDetailPage.tsx, client/src/pages/SceneEditorPage.tsx, client/src/pages/ScenesPage.tsx, .specs/PROJECT_SPEC.md
+- **Status**: merged
+- **Merge date**: 2026-03-25
+- **Branch cleanup**: done
+- **Summary**: Removed auto_activate flag and priority — every scene is equal. room_default_scenes table for one default per room+mode. Default scene manageable from Scene Editor (with replacement warnings) and Room Detail. All "auto" terminology replaced with "default".
+- **Files**: 16 files (6 server, 6 client, 4 memory/spec)
