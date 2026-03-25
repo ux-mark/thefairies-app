@@ -246,8 +246,8 @@
 ## PR #30 — Production readiness: resolve 47 open issues
 - **Branch**: feature/production-readiness → dev
 - **Created**: 2026-03-25
-- **Status**: open
-- **Merge date**: —
-- **Branch cleanup**: pending
+- **Status**: merged
+- **Merge date**: 2026-03-25
+- **Branch cleanup**: done
 - **Summary**: Comprehensive production readiness pass across 7 phases: infrastructure (graceful shutdown, PM2 compiled JS, deploy hardening), security (webhook auth, rate limiting, body limits, generic errors), data integrity (log pruning, cycle detection, transactions, lock-based weather indicator), UX error states (5 pages), accessibility (6 fixes), UX consistency (truncate removal, empty states, LIFX exclusions), code quality (11 fixes including N+1 elimination, Zod validation, debounce)
 - **Files**: 40 files (745 insertions, 405 deletions)
