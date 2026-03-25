@@ -5,18 +5,17 @@
 
 ---
 
-## 2026-03-25 — Replace scene priority with explicit room auto scenes
-- New `room_auto_scenes` table: one auto scene per room+mode combo, enforced by PK
-- Migration: highest-priority auto_activate scene per room+mode becomes the auto scene, then priority column dropped from scene_rooms
-- New API endpoints: GET /rooms/auto-scenes (bulk), GET /rooms/:name/auto-scenes, PUT /rooms/:name/auto-scene
-- Motion handler: direct room_auto_scenes lookup replaces ORDER BY priority DESC query
-- Scene update edge cases: rooms/modes removed → room_auto_scenes cleaned up; auto_activate off → entries deleted
-- Homepage: all scenes shown (no auto_activate filter, no 4-scene limit), Activity icon on auto scene, auto sorted first
-- Room Detail: mode-grouped layout replaces flat list + mode pills; radio-style controls to set/clear auto scene per mode
-- Scenes page: alphabetical sort, Activity "Auto" badge replaces Star "Default" badge
-- Scene Editor: priority input removed from room assignment section
-- Dead code removed: sortScenesByPriority(), getDefaultScene(), handleRoomPriorityChange(), priority in Zod schemas/interfaces
-- Files: 12 files (5 server, 6 client, 1 spec)
+## 2026-03-25 — Simplify scene model: remove auto_activate, add default scene UX
+- Removed `auto_activate` column from scenes table entirely — every scene is equal
+- Renamed `room_auto_scenes` → `room_default_scenes` (table + API + UI)
+- All "auto" terminology replaced with "default" throughout
+- Scene Editor: new "Default scene" section with per-room+mode radio controls and warnings when replacing existing defaults
+- Room Detail: all scenes show radio buttons (no eligibility gating), badge says "Default"
+- Homepage: all scenes shown, Activity icon marks default scene
+- Motion handler: direct room_default_scenes lookup, no auto_activate filter
+- Migration: FK constraints disabled during scenes table recreation; table rename; priority migration picks all scenes
+- API renamed: /rooms/default-scenes, /rooms/:name/default-scene
+- Files: 10 files (4 server, 6 client)
 
 ## 2026-03-24 — Direct Kasa integration via python-kasa sidecar
 - Python FastAPI sidecar with python-kasa for direct local-network Kasa device control

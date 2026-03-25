@@ -5,15 +5,14 @@
 
 ---
 
-## 2026-03-25 — Replace scene priority with explicit room_auto_scenes table
-- Scene priority (0-100 on scene_rooms) removed — confusing, unnecessary since users set up one auto scene per room+mode
-- New `room_auto_scenes` table: explicit lookup for "what scene does motion trigger for this room+mode?"
-- Each room+mode can have zero or one auto scene, enforced by composite PK
-- `auto_activate` stays as a scene-level eligibility flag — scenes must have `auto_activate = 1` to be set as auto
-- Auto scene assignment managed from Room Detail page, not Scene Editor
-- Homepage shows ALL scenes for room+mode (not just auto_activate ones), with motion icon marking the auto scene
-- Rationale: priority was a confusing abstraction; explicit auto assignment is clearer and matches the actual use case
-- Alternatives considered: keeping priority with better UI — rejected because the underlying model was wrong
+## 2026-03-25 — Simplify scene model: every scene is equal, one default per room+mode
+- Scene priority (0-100) AND `auto_activate` flag both removed — no auto/manual distinction
+- Every scene is just a scene. Any scene can be the default for a room+mode.
+- `room_default_scenes` table: one default scene per room+mode combo, enforced by composite PK
+- Default scene activates on motion. User can manually activate any other scene; motion won't overwrite it. After inactivity timeout, next motion triggers the default again.
+- Default scene assignment available from both Scene Editor (new section with replacement warnings) and Room Detail page (radio controls)
+- Rationale: `auto_activate` created a confusing two-layer gating system on top of the already-correct `room_default_scenes` table
+- Alternatives considered: keeping auto_activate as eligibility gate — rejected because it clouded the simple mental model
 
 ## 2026-03-24 — Direct Kasa integration via python-kasa sidecar
 - Replaced Hubitat-mediated Kasa device control with direct local-network communication
