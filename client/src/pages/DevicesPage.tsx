@@ -55,25 +55,19 @@ function RoomPill({
     onError: () => toast({ message: 'Failed to assign device', type: 'error' }),
   })
 
-  if (roomName) {
-    return (
-      <Link
-        to={`/rooms/${encodeURIComponent(roomName)}`}
-        className="hidden shrink-0 rounded-full bg-fairy-500/10 px-2 py-0.5 text-[10px] font-medium text-fairy-400 hover:bg-fairy-500/20 transition-colors sm:inline-flex"
-      >
-        {roomName}
-      </Link>
-    )
-  }
-
   return (
     <div ref={ref} className="relative hidden sm:block">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
-        className="shrink-0 rounded-full border border-dashed border-[var(--border-secondary)] px-2 py-0.5 text-[10px] font-medium text-caption transition-colors hover:border-fairy-500/40 hover:text-fairy-400"
-        aria-label={`Assign ${deviceLabel} to a room`}
+        className={cn(
+          'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors',
+          roomName
+            ? 'bg-fairy-500/10 text-fairy-400 hover:bg-fairy-500/20'
+            : 'border border-dashed border-[var(--border-secondary)] text-caption hover:border-fairy-500/40 hover:text-fairy-400',
+        )}
+        aria-label={roomName ? `Change room for ${deviceLabel} (currently ${roomName})` : `Assign ${deviceLabel} to a room`}
       >
-        Assign room
+        {roomName ?? 'Assign room'}
       </button>
       {open && rooms && rooms.length > 0 && (
         <div className="absolute right-0 top-full z-20 mt-1 max-h-48 w-40 overflow-y-auto rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-primary)] shadow-lg">
@@ -81,8 +75,13 @@ function RoomPill({
             <button
               key={room.name}
               onClick={(e) => { e.stopPropagation(); assignMutation.mutate(room.name) }}
-              disabled={assignMutation.isPending}
-              className="flex w-full min-h-[36px] items-center px-3 py-1.5 text-left text-xs text-body transition-colors hover:bg-fairy-500/10 hover:text-heading"
+              disabled={assignMutation.isPending || room.name === roomName}
+              className={cn(
+                'flex w-full min-h-[36px] items-center px-3 py-1.5 text-left text-xs transition-colors',
+                room.name === roomName
+                  ? 'text-fairy-400 font-medium bg-fairy-500/5'
+                  : 'text-body hover:bg-fairy-500/10 hover:text-heading',
+              )}
             >
               {room.name}
             </button>
