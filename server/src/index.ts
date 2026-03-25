@@ -203,6 +203,12 @@ app.post('/hubitat', async (req, res) => {
 const clientDist = path.join(__dirname, '../../client/dist')
 app.use(express.static(clientDist))
 
+// SPA fallback — serve index.html for any non-API route so client-side routing works
+// Express 5 requires named wildcard parameter syntax
+app.get('{*path}', (_req, res) => {
+  res.sendFile(path.join(clientDist, 'index.html'))
+})
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`)
