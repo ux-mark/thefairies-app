@@ -12,7 +12,6 @@ interface SceneRow {
   tags: string
   active_from: string | null
   active_to: string | null
-  auto_activate: number
   last_activated_at: string | null
   created_at: string
   updated_at: string
@@ -35,10 +34,10 @@ function parseScene(row: SceneRow) {
   try { commands = JSON.parse(row.commands) } catch { commands = [] }
   try { tags = JSON.parse(row.tags) } catch { tags = [] }
 
-  const rooms = getAll<{ room_name: string; priority: number }>(
-    'SELECT room_name, priority FROM scene_rooms WHERE scene_name = ?',
+  const rooms = getAll<{ room_name: string }>(
+    'SELECT room_name FROM scene_rooms WHERE scene_name = ?',
     [row.name],
-  ).map(r => ({ name: r.room_name, priority: r.priority }))
+  ).map(r => ({ name: r.room_name }))
 
   const modes = getAll<{ mode_name: string }>(
     'SELECT mode_name FROM scene_modes WHERE scene_name = ?',
@@ -53,7 +52,6 @@ function parseScene(row: SceneRow) {
     tags: Array.isArray(tags) ? tags : [],
     active_from: row.active_from ?? null,
     active_to: row.active_to ?? null,
-    auto_activate: Boolean(row.auto_activate ?? 1),
     last_activated_at: row.last_activated_at ?? null,
   }
 }
@@ -90,25 +88,23 @@ const commandSchema = z.object({
 const createSceneSchema = z.object({
   name: z.string().min(1),
   icon: z.string().optional(),
-  rooms: z.array(z.object({ name: z.string(), priority: z.union([z.number(), z.string().transform(Number)]) })).optional(),
+  rooms: z.array(z.object({ name: z.string() })).optional(),
   modes: z.array(z.string()).optional(),
   commands: z.array(commandSchema).optional(),
   tags: z.array(z.string()).optional(),
   active_from: z.string().regex(/^\d{2}-\d{2}$/).nullable().optional(),
   active_to: z.string().regex(/^\d{2}-\d{2}$/).nullable().optional(),
-  auto_activate: z.boolean().optional(),
 })
 
 const updateSceneSchema = z.object({
   name: z.string().min(1).optional(),
   icon: z.string().optional(),
-  rooms: z.array(z.object({ name: z.string(), priority: z.union([z.number(), z.string().transform(Number)]) })).optional(),
+  rooms: z.array(z.object({ name: z.string() })).optional(),
   modes: z.array(z.string()).optional(),
   commands: z.array(commandSchema).optional(),
   tags: z.array(z.string()).optional(),
   active_from: z.string().regex(/^\d{2}-\d{2}$/).nullable().optional(),
   active_to: z.string().regex(/^\d{2}-\d{2}$/).nullable().optional(),
-  auto_activate: z.boolean().optional(),
 })
 
 // GET / — list all scenes
@@ -134,7 +130,7 @@ router.get('/:name', (req: Request, res: Response) => {
 
     // Get lights for each room in the scene
     const roomLights: Record<string, LightRoomRow[]> = {}
-    for (const room of parsed.rooms as { name: string; priority: number }[]) {
+    for (const room of parsed.rooms as { name: string }[]) {
       roomLights[room.name] = getAll<LightRoomRow>(
         'SELECT * FROM light_rooms WHERE room_name = ?',
         [room.name],
@@ -155,8 +151,8 @@ router.post('/', (req: Request, res: Response) => {
 
     const createTransaction = db.transaction(() => {
       run(
-        `INSERT INTO scenes (name, icon, commands, tags, active_from, active_to, auto_activate)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO scenes (name, icon, commands, tags, active_from, active_to)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           body.name,
           body.icon ?? '',
@@ -164,15 +160,14 @@ router.post('/', (req: Request, res: Response) => {
           JSON.stringify(body.tags ?? []),
           body.active_from ?? null,
           body.active_to ?? null,
-          body.auto_activate !== undefined ? Number(body.auto_activate) : 1,
         ],
       )
 
       // Insert room assignments
       if (body.rooms) {
-        const insertRoom = db.prepare('INSERT INTO scene_rooms (scene_name, room_name, priority) VALUES (?, ?, ?)')
+        const insertRoom = db.prepare('INSERT INTO scene_rooms (scene_name, room_name) VALUES (?, ?)')
         for (const room of body.rooms) {
-          insertRoom.run(body.name, room.name, Number(room.priority) || 0)
+          insertRoom.run(body.name, room.name)
         }
       }
 
@@ -219,7 +214,6 @@ router.put('/:name', (req: Request, res: Response) => {
       if (body.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(body.tags)) }
       if (body.active_from !== undefined) { fields.push('active_from = ?'); values.push(body.active_from) }
       if (body.active_to !== undefined) { fields.push('active_to = ?'); values.push(body.active_to) }
-      if (body.auto_activate !== undefined) { fields.push('auto_activate = ?'); values.push(Number(body.auto_activate)) }
 
       if (fields.length > 0) {
         fields.push("updated_at = datetime('now')")
@@ -232,13 +226,39 @@ router.put('/:name', (req: Request, res: Response) => {
       const lookupName = body.name ?? req.params.name
 
       if (body.rooms !== undefined) {
+        // Clean up room_default_scenes for rooms no longer in this scene
+        const newRoomNames = body.rooms.map(r => r.name)
+        const oldRoomNames = getAll<{ room_name: string }>(
+          'SELECT room_name FROM scene_rooms WHERE scene_name = ?', [lookupName],
+        ).map(r => r.room_name)
+        const removedRooms = oldRoomNames.filter(rn => !newRoomNames.includes(rn))
+        if (removedRooms.length > 0) {
+          const placeholders = removedRooms.map(() => '?').join(',')
+          run(
+            `DELETE FROM room_default_scenes WHERE scene_name = ? AND room_name IN (${placeholders})`,
+            [lookupName, ...removedRooms],
+          )
+        }
+
         run('DELETE FROM scene_rooms WHERE scene_name = ?', [lookupName])
-        const insertRoom = db.prepare('INSERT INTO scene_rooms (scene_name, room_name, priority) VALUES (?, ?, ?)')
+        const insertRoom = db.prepare('INSERT INTO scene_rooms (scene_name, room_name) VALUES (?, ?)')
         for (const room of body.rooms) {
-          insertRoom.run(lookupName, room.name, Number(room.priority) || 0)
+          insertRoom.run(lookupName, room.name)
         }
       }
       if (body.modes !== undefined) {
+        // Clean up room_default_scenes for modes no longer assigned to this scene
+        const removedModes = getAll<{ mode_name: string }>(
+          'SELECT mode_name FROM scene_modes WHERE scene_name = ?', [lookupName],
+        ).map(m => m.mode_name).filter(mn => !body.modes!.includes(mn))
+        if (removedModes.length > 0) {
+          const placeholders = removedModes.map(() => '?').join(',')
+          run(
+            `DELETE FROM room_default_scenes WHERE scene_name = ? AND mode_name IN (${placeholders})`,
+            [lookupName, ...removedModes],
+          )
+        }
+
         run('DELETE FROM scene_modes WHERE scene_name = ?', [lookupName])
         const insertMode = db.prepare('INSERT INTO scene_modes (scene_name, mode_name) VALUES (?, ?)')
         for (const mode of body.modes) {

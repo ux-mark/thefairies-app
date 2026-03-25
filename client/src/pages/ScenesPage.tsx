@@ -8,7 +8,7 @@ import {
   Sparkles,
   Search,
   CalendarDays,
-  Star,
+  Activity,
   Clock,
 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -19,7 +19,6 @@ import {
   isSceneInSeason,
   getDefaultScene,
   isStaleScene,
-  sortScenesByPriority,
   getModesForRoom,
   formatRelativeTime,
 } from '@/lib/scene-utils'
@@ -73,7 +72,7 @@ interface SceneRowProps {
   showRoomBadges?: boolean
 }
 
-function SceneRow({ scene, isActive, isDefault, showRoomBadges }: SceneRowProps) {
+function SceneRow({ scene, isDefault, isActive, showRoomBadges }: SceneRowProps) {
   const season = isSceneInSeason(scene)
   const roomList = Array.isArray(scene.rooms) ? scene.rooms : []
 
@@ -93,8 +92,8 @@ function SceneRow({ scene, isActive, isDefault, showRoomBadges }: SceneRowProps)
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-heading text-sm font-medium">{scene.name}</span>
           {isDefault && (
-            <span className="flex items-center gap-0.5 text-xs font-medium text-amber-400">
-              <Star className="h-3 w-3" fill="currentColor" aria-hidden="true" />
+            <span className="flex items-center gap-0.5 text-xs font-medium text-fairy-400">
+              <Activity className="h-3 w-3" aria-hidden="true" />
               Default
             </span>
           )}
@@ -149,6 +148,7 @@ interface RoomAccordionProps {
   allScenes: Scene[]
   filteredScenes: Scene[]
   activeSceneNames: Set<string>
+  defaultScenes: Record<string, Record<string, string>> | undefined
   isOpen: boolean
   onToggle: () => void
 }
@@ -158,6 +158,7 @@ function RoomAccordion({
   allScenes,
   filteredScenes,
   activeSceneNames,
+  defaultScenes,
   isOpen,
   onToggle,
 }: RoomAccordionProps) {
@@ -182,7 +183,7 @@ function RoomAccordion({
               m => (m ?? '').toLowerCase() === activeMode.toLowerCase(),
             ),
           )
-    return sortScenesByPriority(byMode, roomName)
+    return [...byMode].sort((a, b) => a.name.localeCompare(b.name))
   }, [filteredScenes, roomName, activeMode])
 
   const hasActiveScene = displayScenes.some(s => activeSceneNames.has(s.name))
@@ -235,11 +236,11 @@ function RoomAccordion({
       {/* Scene rows */}
       {displayScenes.length > 0 ? (
         displayScenes.map(scene => {
-          const defaultScene =
+          const defaultSceneName =
             activeMode !== 'All'
-              ? getDefaultScene(allScenes, roomName, activeMode)
+              ? getDefaultScene(defaultScenes, roomName, activeMode)
               : null
-          const isDefault = defaultScene?.name === scene.name
+          const isDefault = defaultSceneName === scene.name
           return (
             <SceneRow
               key={scene.name}
@@ -340,6 +341,11 @@ export default function ScenesPage() {
   const { data: rooms } = useQuery({
     queryKey: ['rooms'],
     queryFn: api.rooms.getAll,
+  })
+
+  const { data: defaultScenes } = useQuery({
+    queryKey: ['room-default-scenes'],
+    queryFn: api.roomDefaultScenes.getAll,
   })
 
   // Active scene names from room data
@@ -614,6 +620,7 @@ export default function ScenesPage() {
                       allScenes={scenes}
                       filteredScenes={filteredScenes}
                       activeSceneNames={activeSceneNames}
+                      defaultScenes={defaultScenes}
                       isOpen={computedOpenRooms.has(roomName)}
                       onToggle={() => toggleRoom(roomName)}
                     />

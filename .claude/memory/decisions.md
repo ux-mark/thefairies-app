@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-03-25 — Simplify scene model: every scene is equal, one default per room+mode
+- Scene priority (0-100) AND `auto_activate` flag both removed — no auto/manual distinction
+- Every scene is just a scene. Any scene can be the default for a room+mode.
+- `room_default_scenes` table: one default scene per room+mode combo, enforced by composite PK
+- Default scene activates on motion. User can manually activate any other scene; motion won't overwrite it. After inactivity timeout, next motion triggers the default again.
+- Default scene assignment available from both Scene Editor (new section with replacement warnings) and Room Detail page (radio controls)
+- Rationale: `auto_activate` created a confusing two-layer gating system on top of the already-correct `room_default_scenes` table
+- Alternatives considered: keeping auto_activate as eligibility gate — rejected because it clouded the simple mental model
+
 ## 2026-03-24 — Direct Kasa integration via python-kasa sidecar
 - Replaced Hubitat-mediated Kasa device control with direct local-network communication
 - Python FastAPI sidecar (port 3002) using python-kasa library for device discovery, control, and energy monitoring

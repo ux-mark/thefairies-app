@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-03-25 — Simplify scene model: remove auto_activate, add default scene UX
+- Removed `auto_activate` column from scenes table entirely — every scene is equal
+- Renamed `room_auto_scenes` → `room_default_scenes` (table + API + UI)
+- All "auto" terminology replaced with "default" throughout
+- Scene Editor: new "Default scene" section with per-room+mode radio controls and warnings when replacing existing defaults
+- Room Detail: all scenes show radio buttons (no eligibility gating), badge says "Default"
+- Homepage: all scenes shown, Activity icon marks default scene
+- Motion handler: direct room_default_scenes lookup, no auto_activate filter
+- Migration: FK constraints disabled during scenes table recreation; table rename; priority migration picks all scenes
+- API renamed: /rooms/default-scenes, /rooms/:name/default-scene
+- Files: 10 files (4 server, 6 client)
+
 ## 2026-03-24 — Direct Kasa integration via python-kasa sidecar
 - Python FastAPI sidecar with python-kasa for direct local-network Kasa device control
 - Device discovery (UDP broadcast), 10-second polling, 5-minute DHCP rediscovery
