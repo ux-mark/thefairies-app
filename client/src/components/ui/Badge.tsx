@@ -11,6 +11,7 @@ const typeColors: Record<string, string> = {
   twinkly: 'bg-pink-500/15 text-pink-400',
   fairy: 'bg-cyan-500/15 text-cyan-400',
   motion: 'bg-green-500/15 text-green-400',
+  temperature: 'bg-orange-500/15 text-orange-400',
   // Kasa device types — all share teal
   kasa_plug: 'bg-teal-500/15 text-teal-400',
   kasa_strip: 'bg-teal-500/15 text-teal-400',
@@ -32,6 +33,7 @@ const typeLabels: Record<string, string> = {
   twinkly: 'Twinkly',
   fairy: 'Fairy',
   motion: 'Motion',
+  temperature: 'Temperature',
   unknown: 'Device',
   // Kasa types — all shown as "Kasa plug" to the user
   kasa_plug: 'Kasa plug',
