@@ -15,12 +15,12 @@ const typeColors: Record<string, string> = {
   // Kasa device types — all share teal
   kasa_plug: 'bg-teal-500/15 text-teal-400',
   kasa_strip: 'bg-teal-500/15 text-teal-400',
-  kasa_outlet: 'bg-teal-500/15 text-teal-400',
+  kasa_socket: 'bg-teal-500/15 text-teal-400',
   kasa_switch: 'bg-teal-500/15 text-teal-400',
   kasa_dimmer: 'bg-teal-500/15 text-teal-400',
   plug: 'bg-teal-500/15 text-teal-400',
   strip: 'bg-teal-500/15 text-teal-400',
-  outlet: 'bg-teal-500/15 text-teal-400',
+  socket: 'bg-teal-500/15 text-teal-400',
 }
 
 /** Human-readable labels for device types. Used when no explicit label is passed. */
@@ -38,12 +38,12 @@ const typeLabels: Record<string, string> = {
   // Kasa types — all shown as "Kasa plug" to the user
   kasa_plug: 'Kasa plug',
   kasa_strip: 'Kasa plug',
-  kasa_outlet: 'Kasa plug',
+  kasa_socket: 'Kasa socket',
   kasa_switch: 'Kasa plug',
   kasa_dimmer: 'Kasa plug',
   plug: 'Kasa plug',
   strip: 'Kasa plug',
-  outlet: 'Kasa plug',
+  socket: 'Kasa socket',
 }
 
 interface TypeBadgeProps {

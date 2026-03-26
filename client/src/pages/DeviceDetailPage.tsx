@@ -806,12 +806,12 @@ function KasaDeviceDetail({ id }: { id: string }) {
         </section>
       )}
 
-      {/* ── 4. Child outlets (strip) ────────────────────────────────────── */}
+      {/* ── 4. Child sockets (strip) ────────────────────────────────────── */}
       {device.children && device.children.length > 0 && (
-        <section aria-labelledby="outlets-heading">
+        <section aria-labelledby="sockets-heading">
           <div className="card rounded-xl border p-5">
-            <h2 id="outlets-heading" className="mb-4 text-sm font-semibold text-heading">
-              Outlets
+            <h2 id="sockets-heading" className="mb-4 text-sm font-semibold text-heading">
+              Sockets
             </h2>
             <ul className="divide-y divide-[var(--border-secondary)]" role="list">
               {device.children.map(child => {
@@ -838,7 +838,7 @@ function KasaDeviceDetail({ id }: { id: string }) {
                       {childOn && typeof childPower === 'number' && (
                         <span className="text-xs tabular-nums text-caption">{childPower.toFixed(1)} W</span>
                       )}
-                      <TypeBadge type="outlet" />
+                      <TypeBadge type="socket" />
                       <ChevronRight className="h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
                     </Link>
                   </li>

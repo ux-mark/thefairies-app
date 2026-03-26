@@ -443,8 +443,17 @@ function KasaDeviceCard({ device, rooms }: { device: UnifiedDevice; rooms?: Room
           </Link>
           <p className="text-caption mt-0.5 text-xs">
             {device.roomName && <span>{device.roomName}</span>}
-            {device.kasaParentLabel && (
-              <span>{device.roomName ? ' · ' : ''}on {device.kasaParentLabel}</span>
+            {device.kasaParentLabel && device.kasaDevice?.parent_id && (
+              <span>
+                {device.roomName ? ' · ' : ''}on{' '}
+                <Link
+                  to={`/devices/kasa/${encodeURIComponent(device.kasaDevice.parent_id)}`}
+                  className="hover:text-fairy-400 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {device.kasaParentLabel}
+                </Link>
+              </span>
             )}
             {device.isOn && kasa.has_emeter && typeof powerWatts === 'number' && (
               <span>{(device.roomName || device.kasaParentLabel) ? ' · ' : ''}{powerWatts.toFixed(1)} W</span>
@@ -711,17 +720,17 @@ export default function DevicesPage() {
       }
     }
 
-    // Kasa devices — show individual outlets as top-level devices.
-    // Parent strips are hidden; outlets show "on [Strip Name]" as context.
+    // Kasa devices — show individual sockets as top-level devices.
+    // Parent strips are hidden; sockets show "on [Strip Name]" as context.
     if (kasaDevices) {
-      // Build parent label lookup for outlet context
+      // Build parent label lookup for socket context
       const kasaParentLabels = new Map<string, string>()
       for (const d of kasaDevices) {
         if (d.device_type === 'strip') kasaParentLabels.set(d.id, d.label)
       }
 
       for (const d of kasaDevices) {
-        // Skip parent strips — their outlets are shown individually
+        // Skip parent strips — their sockets are shown individually
         if (d.device_type === 'strip') continue
 
         const assignment = deviceRoomMap.get(d.id)
