@@ -89,7 +89,11 @@ function ToggleSwitch({
 
 function ruleDescription(rule: AutoPlayRule): string {
   const room = rule.room_name ?? 'whole house'
-  const base = `Play "${rule.favourite_name}" in ${room} when mode changes to "${rule.mode_name}"`
+  const isContinue = rule.favourite_name === '__continue__'
+  const action = isContinue
+    ? `Continue what's already playing in ${room}`
+    : `Play "${rule.favourite_name}" in ${room}`
+  const base = `${action} when mode changes to "${rule.mode_name}"`
 
   if (rule.trigger_type === 'if_not_playing') {
     return `${base} — only if nothing is playing`
@@ -126,7 +130,8 @@ function AddRuleForm({
   const [triggerType, setTriggerType] = useState<TriggerType>('mode_change')
   const [sourceValue, setSourceValue] = useState<string>('')
 
-  const isValid = favourite && mode
+  const effectiveTrigger = favourite === '__continue__' ? 'mode_change' : triggerType
+  const isValid = favourite && mode && !(triggerType === 'if_source_not' && favourite !== '__continue__' && !sourceValue)
 
   const handleSave = () => {
     if (!isValid) return
@@ -134,8 +139,8 @@ function AddRuleForm({
       room_name: targetRoom || null,
       mode_name: mode,
       favourite_name: favourite,
-      trigger_type: triggerType,
-      trigger_value: triggerType === 'if_source_not' ? sourceValue : null,
+      trigger_type: effectiveTrigger,
+      trigger_value: effectiveTrigger === 'if_source_not' ? sourceValue : null,
       enabled: 1,
     })
   }
@@ -183,6 +188,7 @@ function AddRuleForm({
             className={selectClass}
           >
             <option value="">Select a favourite</option>
+            <option value="__continue__">Continue what's already playing</option>
             {favourites.map((f) => (
               <option key={f} value={f}>
                 {f}
@@ -216,46 +222,48 @@ function AddRuleForm({
         </div>
       </div>
 
-      {/* Condition */}
-      <fieldset>
-        <legend className="text-heading text-sm mb-2">Condition</legend>
-        <div className="space-y-2">
-          {(
-            [
-              { value: 'mode_change', label: 'Always when mode changes' },
-              { value: 'if_not_playing', label: 'Only if nothing is playing' },
-              { value: 'if_source_not', label: 'Only if a source is not active' },
-            ] as { value: TriggerType; label: string }[]
-          ).map(({ value, label }) => (
-            <label key={value} className="flex items-center gap-2 cursor-pointer min-h-[44px]">
-              <input
-                type="radio"
-                name="trigger-type"
-                value={value}
-                checked={triggerType === value}
-                onChange={() => setTriggerType(value)}
-                className="h-4 w-4 accent-fairy-500"
-              />
-              <span className="text-heading text-sm">{label}</span>
-            </label>
-          ))}
-        </div>
-        {triggerType === 'if_source_not' && (
-          <div className="mt-3">
-            <label htmlFor="rule-source" className="text-caption text-xs mb-1.5 block">
-              Source name
-            </label>
-            <input
-              id="rule-source"
-              type="text"
-              value={sourceValue}
-              onChange={(e) => setSourceValue(e.target.value)}
-              placeholder="e.g. Spotify"
-              className="w-full rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-            />
+      {/* Condition — hidden when __continue__ (only mode_change makes sense) */}
+      {favourite !== '__continue__' && (
+        <fieldset>
+          <legend className="text-heading text-sm mb-2">Condition</legend>
+          <div className="space-y-2">
+            {(
+              [
+                { value: 'mode_change', label: 'Always when mode changes' },
+                { value: 'if_not_playing', label: 'Only if nothing is playing' },
+                { value: 'if_source_not', label: 'Only if a source is not active' },
+              ] as { value: TriggerType; label: string }[]
+            ).map(({ value, label }) => (
+              <label key={value} className="flex items-center gap-2 cursor-pointer min-h-[44px]">
+                <input
+                  type="radio"
+                  name="trigger-type"
+                  value={value}
+                  checked={triggerType === value}
+                  onChange={() => setTriggerType(value)}
+                  className="h-4 w-4 accent-fairy-500"
+                />
+                <span className="text-heading text-sm">{label}</span>
+              </label>
+            ))}
           </div>
-        )}
-      </fieldset>
+          {triggerType === 'if_source_not' && (
+            <div className="mt-3">
+              <label htmlFor="rule-source" className="text-caption text-xs mb-1.5 block">
+                Source name
+              </label>
+              <input
+                id="rule-source"
+                type="text"
+                value={sourceValue}
+                onChange={(e) => setSourceValue(e.target.value)}
+                placeholder="e.g. Spotify"
+                className="w-full rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+              />
+            </div>
+          )}
+        </fieldset>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
@@ -301,7 +309,6 @@ export function MusicSection() {
   })
 
   const followMeEnabled = prefs?.sonos_follow_me === 'true'
-  const defaultFavourite = prefs?.sonos_default_favourite ?? ''
 
   // Sonos data
   const { data: favourites } = useQuery({
@@ -362,9 +369,6 @@ export function MusicSection() {
   const assignedRooms = speakers?.map((s) => s.room_name) ?? []
   const speakerCount = speakers?.length ?? 0
 
-  const selectClass =
-    'surface w-full appearance-none rounded-lg border px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500'
-
   return (
     <div className="space-y-4">
       {/* Connection status */}
@@ -392,41 +396,6 @@ export function MusicSection() {
             />
           </div>
 
-          {/* Default favourite — only visible when follow-me is enabled */}
-          {followMeEnabled && (
-            <div>
-              <label htmlFor="default-favourite" className="text-heading text-sm mb-1.5 block">
-                Default favourite
-              </label>
-              <p className="text-caption text-xs mt-1 mb-2">
-                Plays when follow-me starts and no music is running. Rooms can override this with their own favourite.
-              </p>
-              <div className="relative">
-                <select
-                  id="default-favourite"
-                  value={defaultFavourite}
-                  onChange={(e) =>
-                    prefMutation.mutate({
-                      key: 'sonos_default_favourite',
-                      value: e.target.value,
-                    })
-                  }
-                  className={selectClass}
-                >
-                  <option value="">No default — keep current music</option>
-                  {favouriteNames.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
-                  aria-hidden="true"
-                />
-              </div>
-            </div>
-          )}
         </div>
       </Section>
 
