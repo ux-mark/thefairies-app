@@ -726,10 +726,12 @@ export default function RoomDetailPage() {
       // Save sensor assignments via device_rooms
       const currentSensors = room?.sensors ?? []
       const currentSensorIds = new Set(currentSensors.map(s => s.id ?? s.name))
-      const newSensorIds = new Set(effectiveSensors.map(s => {
-        const hub = allHubDevices?.find(d => d.label === s.name)
-        return hub ? String(hub.id) : s.name
-      }))
+      const newSensorIds = new Set(effectiveSensors
+        .map(s => {
+          const hub = allHubDevices?.find(d => d.label === s.name)
+          return hub ? String(hub.id) : null
+        })
+        .filter((id): id is string => id !== null))
 
       // Unassign removed sensors
       for (const sensor of currentSensors) {
@@ -742,8 +744,9 @@ export default function RoomDetailPage() {
       // Assign new sensors
       for (const sensor of effectiveSensors) {
         const hubDevice = allHubDevices?.find(d => d.label === sensor.name)
-        const sensorId = hubDevice ? String(hubDevice.id) : sensor.name
-        if (sensor.name && !currentSensorIds.has(sensorId)) {
+        if (!hubDevice || !sensor.name) continue
+        const sensorId = String(hubDevice.id)
+        if (!currentSensorIds.has(sensorId)) {
           await api.hubitat.assignDevice({
             device_id: sensorId,
             device_label: sensor.name,
