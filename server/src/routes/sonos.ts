@@ -196,7 +196,7 @@ const autoPlaySchema = z.object({
   favourite_name: z.string().min(1),
   trigger_type: z.enum(['mode_change', 'if_not_playing', 'if_source_not']),
   trigger_value: z.string().nullable().optional(),
-  enabled: z.boolean().optional().default(true),
+  enabled: z.union([z.boolean(), z.number()]).optional().default(true),
 })
 
 router.post('/auto-play', (req: Request, res: Response) => {
@@ -233,7 +233,7 @@ const autoPlayUpdateSchema = z.object({
   favourite_name: z.string().min(1).optional(),
   trigger_type: z.enum(['mode_change', 'if_not_playing', 'if_source_not']).optional(),
   trigger_value: z.string().nullable().optional(),
-  enabled: z.boolean().optional(),
+  enabled: z.union([z.boolean(), z.number()]).optional(),
 })
 
 router.put('/auto-play/:id', (req: Request, res: Response) => {

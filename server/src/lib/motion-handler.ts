@@ -262,6 +262,9 @@ export class MotionHandler {
       // Cancel any existing timer for this room
       this.cancelRoomTimer(roomName)
 
+      // Notify Sonos manager of room activity (non-blocking, has its own guards)
+      sonosManager.onRoomMotionActive(roomName).catch(() => {})
+
       // Update room.last_active
       run(
         `UPDATE rooms SET last_active = datetime('now'), updated_at = datetime('now') WHERE name = ?`,
@@ -338,9 +341,6 @@ export class MotionHandler {
           log(`Error activating scene: ${msg}`)
         }
       }
-
-      // Notify Sonos manager of room activity (non-blocking)
-      sonosManager.onRoomMotionActive(roomName).catch(() => {})
     } else {
       // inactive
       log(`Motion inactive: ${sensorName} in ${roomName}`)

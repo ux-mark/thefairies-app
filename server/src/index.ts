@@ -89,7 +89,7 @@ app.post('/hubitat', async (req, res) => {
   // Validate webhook secret
   const HUBITAT_WEBHOOK_SECRET = process.env.HUBITAT_WEBHOOK_SECRET
   if (HUBITAT_WEBHOOK_SECRET) {
-    const token = req.headers['x-hubitat-token'] as string
+    const token = (req.headers['x-hubitat-token'] as string) || (req.query.token as string)
     if (token !== HUBITAT_WEBHOOK_SECRET) {
       res.status(401).json({ error: 'Invalid webhook token' })
       return
