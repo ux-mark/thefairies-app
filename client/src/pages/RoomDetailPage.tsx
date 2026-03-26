@@ -744,7 +744,11 @@ export default function RoomDetailPage() {
       // Assign new sensors
       for (const sensor of effectiveSensors) {
         const hubDevice = allHubDevices?.find(d => d.label === sensor.name)
-        if (!hubDevice || !sensor.name) continue
+        if (!sensor.name) continue
+        if (!hubDevice) {
+          toast({ message: `Could not find hub device for sensor "${sensor.name}". Sensor was not saved.`, type: 'error' })
+          continue
+        }
         const sensorId = String(hubDevice.id)
         if (!currentSensorIds.has(sensorId)) {
           await api.hubitat.assignDevice({
