@@ -1,5 +1,6 @@
 import { getOne, getAll, run, db } from '../db/index.js'
 import { notificationService } from './notification-service.js'
+import { invalidateInsightsCache } from './insights-engine.js'
 
 type DeviceType = 'hub' | 'kasa' | 'lifx'
 
@@ -53,6 +54,7 @@ function getDeviceLabel(deviceType: string, deviceId: string): string {
     )
     return row?.light_label ?? deviceId
   }
+
   return deviceId
 }
 
@@ -108,6 +110,9 @@ export const deviceHealthService = {
         severity: 'info',
         category: 'device_online',
         dedupKey: `device_online:${deviceType}:${deviceId}`,
+        sourceType: deviceType,
+        sourceId: deviceId,
+        sourceLabel: label,
       })
     }
   },
@@ -157,6 +162,9 @@ export const deviceHealthService = {
           severity: 'warning',
           category: 'device_unreachable',
           dedupKey: `device_unreachable:${deviceType}:${deviceId}`,
+          sourceType: deviceType,
+          sourceId: deviceId,
+          sourceLabel: label,
         })
       }
     })()
@@ -172,8 +180,15 @@ export const deviceHealthService = {
       [reason, deviceType, deviceId],
     )
 
+    // Dismiss the unreachable notification so it drops out of insights
+    run(
+      `UPDATE notifications SET dismissed = 1 WHERE dedup_key = ? AND dismissed = 0`,
+      [`device_unreachable:${deviceType}:${deviceId}`],
+    )
+
     const label = getDeviceLabel(deviceType, deviceId)
     logToDb(`Device deactivated: ${label} (${reason})`)
+    invalidateInsightsCache()
   },
 
   reactivateDevice(deviceType: DeviceType, deviceId: string): { success: boolean; error?: string } {
@@ -188,6 +203,7 @@ export const deviceHealthService = {
 
     const label = getDeviceLabel(deviceType, deviceId)
     logToDb(`Device reactivated: ${label}`)
+    invalidateInsightsCache()
 
     return { success: true }
   },

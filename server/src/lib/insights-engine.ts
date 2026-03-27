@@ -1,4 +1,4 @@
-import { getAll, db } from '../db/index.js'
+import { getAll, getOne, db } from '../db/index.js'
 import { notificationService } from './notification-service.js'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -452,6 +452,34 @@ function computeBatteryInsights(battery: BatteryDevice[]): BatteryInsights | nul
   }
 }
 
+// ── Device label resolver (fallback for notifications with null source_label) ─
+
+function resolveDeviceLabel(deviceType: string, deviceId: string): string | null {
+  if (deviceType === 'hub') {
+    const row = getOne<{ label: string }>('SELECT label FROM hub_devices WHERE id = ?', [deviceId])
+    return row?.label ?? null
+  }
+  if (deviceType === 'kasa') {
+    const row = getOne<{ label: string }>('SELECT label FROM kasa_devices WHERE id = ?', [deviceId])
+    return row?.label ?? null
+  }
+  if (deviceType === 'lifx') {
+    const row = getOne<{ light_label: string }>(
+      'SELECT light_label FROM light_rooms WHERE light_id = ? LIMIT 1',
+      [deviceId],
+    )
+    return row?.light_label ?? null
+  }
+
+  return null
+}
+
+function mapDeviceSource(deviceType: string): 'hub' | 'kasa' | null {
+  if (deviceType === 'kasa') return 'kasa'
+  if (deviceType === 'hub') return 'hub'
+  return null
+}
+
 // ── Attention items ─────────────────────────────────────────────────────────
 
 function computeAttentionItems(
@@ -602,6 +630,16 @@ function computeAttentionItems(
     const unreachableNotifs = notificationService.getRecentByCategory('device_unreachable', 1440)
     for (const notif of unreachableNotifs) {
       const dedupParts = notif.dedup_key?.split(':') ?? []
+      const deviceType = dedupParts[1] ?? null
+      const deviceId = dedupParts[2] ?? notif.source_id ?? null
+
+      // Fall back to DB lookup when source_label was not set at notification creation time
+      const deviceLabel = notif.source_label
+        ?? (deviceType && deviceId ? resolveDeviceLabel(deviceType, deviceId) : null)
+
+      // Skip notifications for devices that no longer exist
+      if (!deviceLabel) continue
+
       items.push({
         id: `device-unreachable-${notif.id}`,
         severity: notif.severity as AttentionItem['severity'],
@@ -610,11 +648,11 @@ function computeAttentionItems(
         description: notif.occurrence_count > 1
           ? `${notif.message} (${notif.occurrence_count} occurrences)`
           : notif.message,
-        deviceId: dedupParts[2] ?? notif.source_id ?? null,
-        deviceLabel: notif.source_label,
-        deviceSource: null,
+        deviceId,
+        deviceLabel,
+        deviceSource: deviceType ? mapDeviceSource(deviceType) : null,
         action: 'deactivate',
-        deviceType: dedupParts[1] ?? null,
+        deviceType,
       })
     }
   } catch {
@@ -626,6 +664,15 @@ function computeAttentionItems(
     const onlineNotifs = notificationService.getRecentByCategory('device_online', 1440)
     for (const notif of onlineNotifs) {
       const dedupParts = notif.dedup_key?.split(':') ?? []
+      const deviceType = dedupParts[1] ?? null
+      const deviceId = dedupParts[2] ?? notif.source_id ?? null
+
+      const deviceLabel = notif.source_label
+        ?? (deviceType && deviceId ? resolveDeviceLabel(deviceType, deviceId) : null)
+
+      // Skip notifications for devices that no longer exist
+      if (!deviceLabel) continue
+
       items.push({
         id: `device-online-${notif.id}`,
         severity: notif.severity as AttentionItem['severity'],
@@ -634,11 +681,11 @@ function computeAttentionItems(
         description: notif.occurrence_count > 1
           ? `${notif.message} (${notif.occurrence_count} occurrences)`
           : notif.message,
-        deviceId: dedupParts[2] ?? notif.source_id ?? null,
-        deviceLabel: notif.source_label,
-        deviceSource: null,
+        deviceId,
+        deviceLabel,
+        deviceSource: deviceType ? mapDeviceSource(deviceType) : null,
         action: 'reactivate',
-        deviceType: dedupParts[1] ?? null,
+        deviceType,
       })
     }
   } catch {
@@ -649,6 +696,11 @@ function computeAttentionItems(
 }
 
 // ── Main export ─────────────────────────────────────────────────────────────
+
+export function invalidateInsightsCache(): void {
+  cachedInsights = null
+  cacheTimestamp = 0
+}
 
 export function computeInsights(state: CurrentState): InsightsData {
   const now = Date.now()
