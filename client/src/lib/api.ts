@@ -1121,4 +1121,22 @@ export const api = {
       fetchApi<{ allMuted: boolean; mutedCount: number; totalSpeakers: number }>('/sonos/mute-status'),
     health: () => fetchApi<{ available: boolean }>('/sonos/health'),
   },
+  deviceLinks: {
+    list: () => fetchApi<DeviceLink[]>('/device-links'),
+    getForDevice: (type: string, id: string) =>
+      fetchApi<DeviceLink[]>(`/device-links/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
+    create: (data: {
+      source_type: string
+      source_id: string
+      target_type: string
+      target_id: string
+      link_type?: string
+    }) =>
+      fetchApi<DeviceLink>('/device-links', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: number) =>
+      fetchApi<{ deleted: boolean }>(`/device-links/${id}`, { method: 'DELETE' }),
+  },
 }
