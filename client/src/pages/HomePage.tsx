@@ -511,18 +511,22 @@ function MtaCard() {
             return (
               <div
                 key={`${stop.config.stopId}-${stop.config.direction}-${i}`}
-                className="py-1.5 text-sm"
+                className="flex items-start gap-2 py-1.5 text-sm"
               >
-                <div className="flex items-center gap-2">
+                {/* Fixed-width leading column: dot + badge */}
+                <span className="flex shrink-0 items-center gap-1.5 pt-0.5">
                   <span
-                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    className="h-2 w-2 rounded-full"
                     style={{ backgroundColor: dotColor }}
                     aria-label={`Status: ${stop.status}`}
                   />
                   {displayTrain && <MtaLineBadge line={displayTrain.routeId} />}
-                  <span className="text-heading font-medium">{stop.config.name}</span>
+                </span>
+                {/* Station name + message */}
+                <div className="min-w-0 flex-1">
+                  <p className="text-heading font-medium">{stop.config.name}</p>
+                  <p className="text-caption text-xs">{message}</p>
                 </div>
-                <p className="text-caption text-xs mt-0.5" style={{ paddingLeft: 'calc(0.625rem + 0.5rem)' }}>{message}</p>
               </div>
             )
           })}
