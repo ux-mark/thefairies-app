@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn, formatCost } from '@/lib/utils'
+import { Accordion } from '@/components/ui/Accordion'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
 import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
 import type { PowerDevice, EnergyInsights } from '@/lib/api'
@@ -569,9 +570,11 @@ interface EnergyCardProps {
   power: PowerDevice[]
   insights?: EnergyInsights | null
   currencySymbol?: string
+  open: boolean
+  onToggle: () => void
 }
 
-export default function EnergyCard({ power, insights, currencySymbol = '$' }: EnergyCardProps) {
+export default function EnergyCard({ power, insights, currencySymbol = '$', open, onToggle }: EnergyCardProps) {
   // Sort highest power first
   const sorted = [...power].sort((a, b) => b.power - a.power)
   const maxWatts = sorted[0]?.power ?? 0
@@ -607,15 +610,20 @@ export default function EnergyCard({ power, insights, currencySymbol = '$' }: En
   }
 
   return (
-    <section id="energy-card" aria-label="Energy usage" className="card rounded-xl border p-5">
-      {/* Header */}
-      <header className="mb-1 flex items-center gap-2">
-        <Zap className="h-4 w-4 text-amber-400" aria-hidden="true" />
-        <h2 className="text-heading text-base font-semibold">Energy</h2>
-      </header>
-
+    <Accordion
+      id="energy-card"
+      title={<><Zap className="h-4 w-4 text-amber-400" aria-hidden="true" /> Energy</>}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open ? (
+        <span className="flex items-center gap-2 text-xs">
+          <span className="text-heading font-semibold tabular-nums">{totalWatts.toFixed(1)} W</span>
+          {insights?.overUnderPercent != null && <OverUnderBadge percent={insights.overUnderPercent} />}
+        </span>
+      ) : undefined}
+    >
       {/* Total */}
-      <div className="mb-3">
+      <div className="mb-3 mt-1">
         <p className="text-caption text-sm">
           <span className="text-heading text-2xl font-semibold tabular-nums">
             {totalWatts.toFixed(1)}
@@ -696,6 +704,6 @@ export default function EnergyCard({ power, insights, currencySymbol = '$' }: En
           )}
         </div>
       )}
-    </section>
+    </Accordion>
   )
 }

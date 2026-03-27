@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Thermometer, Cloud, Droplets, Wind, ArrowUp, ArrowDown, Minus, ChevronDown } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
 import {
   Chart,
@@ -14,6 +15,7 @@ import { Line } from 'react-chartjs-2'
 import type { ChartOptions, ChartData } from 'chart.js'
 import { api } from '@/lib/api'
 import { cn, parseServerDate } from '@/lib/utils'
+import { Accordion } from '@/components/ui/Accordion'
 import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
 import type { DashboardSummary, TemperatureInsights, LuxInsights, HistoryPoint } from '@/lib/api'
 
@@ -26,6 +28,8 @@ interface EnvironmentCardProps {
   rooms: DashboardSummary['rooms']
   tempInsights?: TemperatureInsights | null
   luxInsights?: LuxInsights | null
+  open: boolean
+  onToggle: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -229,9 +233,12 @@ function RoomRow({ room, unit, outlier }: RoomRowProps) {
         highlightClass,
       )}
     >
-      <span className="text-heading text-sm font-medium leading-snug">
+      <Link
+        to={`/rooms/${encodeURIComponent(room.name)}`}
+        className="text-fairy-400 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500 text-sm font-medium leading-snug"
+      >
         {room.name}
-      </span>
+      </Link>
       <div className="shrink-0 text-right">
         <span className="text-heading text-sm font-semibold tabular-nums">
           {formatTemp(room.temperature!, unit)}
@@ -676,6 +683,8 @@ export default function EnvironmentCard({
   rooms,
   tempInsights,
   luxInsights,
+  open,
+  onToggle,
 }: EnvironmentCardProps) {
   const unit = getTempUnit()
 
@@ -720,20 +729,47 @@ export default function EnvironmentCard({
 
   // ── Content ────────────────────────────────────────────────────────────────
 
-  return (
-    <section
-      id="environment-card"
-      aria-label="Environment"
-      className={cn('card rounded-xl border p-5')}
-    >
-      <header className="mb-4 flex items-center gap-2">
-        <Thermometer
-          className="h-4 w-4 text-fairy-400"
-          aria-hidden="true"
-        />
-        <h2 className="text-heading text-base font-semibold">Environment</h2>
-      </header>
+  // Build trailing summary for the accordion header
+  const outlierCount = tempInsights?.roomOutliers?.length ?? 0
 
+  return (
+    <Accordion
+      id="environment-card"
+      title={<><Thermometer className="h-4 w-4 text-fairy-400" aria-hidden="true" /> Environment</>}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open && tempInsights ? (
+          <span className="flex items-center gap-2 text-xs">
+            <span className="text-heading font-semibold tabular-nums">
+              {toDisplay(tempInsights.houseAvgTemp, unit)}°
+            </span>
+            {tempInsights.trend === 'warming' && (
+              <span className="inline-flex items-center gap-0.5">
+                <ArrowUp className="h-3.5 w-3.5 text-red-400" aria-hidden="true" />
+                <span className="sr-only">Warming</span>
+              </span>
+            )}
+            {tempInsights.trend === 'cooling' && (
+              <span className="inline-flex items-center gap-0.5">
+                <ArrowDown className="h-3.5 w-3.5 text-blue-400" aria-hidden="true" />
+                <span className="sr-only">Cooling</span>
+              </span>
+            )}
+            {tempInsights.trend === 'stable' && (
+              <span className="inline-flex items-center gap-0.5">
+                <Minus className="text-caption h-3.5 w-3.5" aria-hidden="true" />
+                <span className="sr-only">Stable</span>
+              </span>
+            )}
+            {outlierCount > 0 && (
+              <span className="text-amber-400">
+                {outlierCount} outlier{outlierCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </span>
+        ) : undefined
+      }
+    >
       {hasWeather && <OutdoorSection weather={weather!} unit={unit} />}
 
       {hasIndoor && (
@@ -746,6 +782,6 @@ export default function EnvironmentCard({
       )}
 
       {hasIndoor && <EnvironmentCharts rooms={rooms} />}
-    </section>
+    </Accordion>
   )
 }

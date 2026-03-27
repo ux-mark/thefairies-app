@@ -6,11 +6,14 @@ import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { useToast } from '@/hooks/useToast'
 import type { AttentionItem } from '@/lib/api'
+import { Accordion } from '@/components/ui/Accordion'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface AttentionBarProps {
   items: AttentionItem[]
+  open: boolean
+  onToggle: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -151,11 +154,43 @@ function ItemCard({ item, onDeactivate, onReactivate }: ItemCardProps) {
 
 const INITIAL_VISIBLE = 5
 
+// ── Severity summary badges ────────────────────────────────────────────────────
+
+interface SeveritySummaryProps {
+  criticalCount: number
+  warningCount: number
+  infoCount: number
+}
+
+function SeveritySummary({ criticalCount, warningCount, infoCount }: SeveritySummaryProps) {
+  return (
+    <span className="flex items-center gap-1.5" aria-hidden="true">
+      {criticalCount > 0 && (
+        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-400">
+          {criticalCount}
+        </span>
+      )}
+      {warningCount > 0 && (
+        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+          {warningCount}
+        </span>
+      )}
+      {infoCount > 0 && (
+        <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-bold text-blue-400">
+          {infoCount}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// ── AttentionBar ───────────────────────────────────────────────────────────────
+
 /**
- * Stacked list of attention items (critical, warning, info).
+ * Stacked list of attention items (critical, warning, info) wrapped in an accordion.
  * Returns null when items is empty — absence means everything is fine.
  */
-export default function AttentionBar({ items }: AttentionBarProps) {
+export default function AttentionBar({ items, open, onToggle }: AttentionBarProps) {
   const [expanded, setExpanded] = useState(false)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const queryClient = useQueryClient()
@@ -212,8 +247,33 @@ export default function AttentionBar({ items }: AttentionBarProps) {
   const visible = expanded ? sorted : sorted.slice(0, INITIAL_VISIBLE)
   const hiddenCount = sorted.length - INITIAL_VISIBLE
 
+  const criticalCount = sorted.filter(i => i.severity === 'critical').length
+  const warningCount = sorted.filter(i => i.severity === 'warning').length
+  const infoCount = sorted.filter(i => i.severity === 'info').length
+
+  const accordionTitle = (
+    <>
+      <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden="true" />
+      Needs attention
+    </>
+  )
+
+  const severitySummary = (
+    <SeveritySummary
+      criticalCount={criticalCount}
+      warningCount={warningCount}
+      infoCount={infoCount}
+    />
+  )
+
   return (
-    <section aria-label="Items requiring attention">
+    <Accordion
+      id="attention-card"
+      title={accordionTitle}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open ? severitySummary : undefined}
+    >
       <ul role="list" className="space-y-2">
         {visible.map(item => (
           <ItemCard key={item.id} item={item} onDeactivate={handleDeactivate} onReactivate={handleReactivate} />
@@ -237,6 +297,6 @@ export default function AttentionBar({ items }: AttentionBarProps) {
             : `Show ${hiddenCount} more ${hiddenCount === 1 ? 'item' : 'items'}`}
         </button>
       )}
-    </section>
+    </Accordion>
   )
 }

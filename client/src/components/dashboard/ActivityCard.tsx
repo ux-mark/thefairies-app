@@ -12,9 +12,10 @@ import {
 } from 'chart.js'
 import { Bar, Line } from 'react-chartjs-2'
 import type { ChartOptions, ChartData } from 'chart.js'
-import { Activity } from 'lucide-react'
+import { Activity, Footprints } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ActivityInsights } from '@/lib/api'
+import { Accordion } from '@/components/ui/Accordion'
 import { LucideIcon } from '@/components/ui/LucideIcon'
 import { cn } from '@/lib/utils'
 
@@ -349,9 +350,15 @@ function DailyTrendChart({
 
 interface ActivityCardProps {
   activity: ActivityInsights | null
+  open: boolean
+  onToggle: () => void
 }
 
-export default function ActivityCard({ activity }: ActivityCardProps) {
+const accordionTitle = (
+  <><Activity className="h-4 w-4 text-fairy-400" aria-hidden="true" /> Activity</>
+)
+
+export default function ActivityCard({ activity, open, onToggle }: ActivityCardProps) {
   const allRooms = useMemo(
     () => activity?.roomRanking.map((r) => r.room) ?? [],
     [activity],
@@ -415,18 +422,27 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
     .filter((r) => activeRooms.has(r.room))
     .reduce((sum, r) => sum + r.events24h, 0)
 
-  return (
-    <section
-      id="activity-card"
-      aria-label="Activity patterns"
-      className="card rounded-xl border p-5"
-    >
-      {/* Header */}
-      <header className="mb-4 flex items-center gap-2">
-        <Activity className="h-4 w-4 text-fairy-400" aria-hidden="true" />
-        <h2 className="text-heading text-base font-semibold">Activity</h2>
-      </header>
+  const totalEvents = roomRanking.reduce((sum, r) => sum + r.events24h, 0)
+  const trailingSummary = (
+    <span className="inline-flex items-center gap-2">
+      <span className="inline-flex items-center gap-1 rounded-full bg-fairy-500/15 px-2 py-0.5 text-[11px] font-semibold text-fairy-400 tabular-nums">
+        <Footprints className="h-3 w-3" aria-hidden="true" />
+        {totalEvents.toLocaleString()}
+      </span>
+      {mostActiveRoom && (
+        <span className="text-xs text-[var(--text-secondary)]">{mostActiveRoom.room}</span>
+      )}
+    </span>
+  )
 
+  return (
+    <Accordion
+      id="activity-card"
+      title={accordionTitle}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open ? trailingSummary : undefined}
+    >
       {/* Headline */}
       <div className="mb-4 space-y-1">
         <p className="text-body text-sm">
@@ -487,6 +503,6 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
           <DailyTrendChart dailyByRoom={dailyByRoom} activeRooms={activeRooms} roomIndexMap={roomIndexMap} />
         </div>
       )}
-    </section>
+    </Accordion>
   )
 }

@@ -6,6 +6,7 @@ import type { InsightsData } from '@/lib/api'
 
 interface HomeSummaryStripProps {
   insights: InsightsData
+  onOpenSection?: (sectionId: string) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -24,11 +25,14 @@ function capitaliseBrightnessLevel(level: string): string {
 interface PillProps {
   ariaLabel: string
   scrollTargetId: string
+  /** Called before scrolling to allow the parent to open the target section */
+  onBeforeScroll?: () => void
   children: React.ReactNode
 }
 
-function Pill({ ariaLabel, scrollTargetId, children }: PillProps) {
+function Pill({ ariaLabel, scrollTargetId, onBeforeScroll, children }: PillProps) {
   function handleClick() {
+    onBeforeScroll?.()
     document.getElementById(scrollTargetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -62,9 +66,9 @@ function PillHeader({ icon, label }: PillHeaderProps) {
 
 // ── Temperature pill ──────────────────────────────────────────────────────────
 
-function TemperaturePill({ temperature }: { temperature: InsightsData['temperature'] }) {
+function TemperaturePill({ temperature, onOpenSection }: { temperature: InsightsData['temperature']; onOpenSection?: (sectionId: string) => void }) {
   return (
-    <Pill ariaLabel="Temperature summary" scrollTargetId="environment-card">
+    <Pill ariaLabel="Temperature summary" scrollTargetId="environment-card" onBeforeScroll={() => onOpenSection?.('environment')}>
       <PillHeader
         icon={<Thermometer className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />}
         label="Temperature"
@@ -124,9 +128,9 @@ function TrendIcon({ trend }: TrendIconProps) {
 
 // ── Brightness pill ───────────────────────────────────────────────────────────
 
-function BrightnessPill({ lux }: { lux: InsightsData['lux'] }) {
+function BrightnessPill({ lux, onOpenSection }: { lux: InsightsData['lux']; onOpenSection?: (sectionId: string) => void }) {
   return (
-    <Pill ariaLabel="Brightness summary" scrollTargetId="environment-card">
+    <Pill ariaLabel="Brightness summary" scrollTargetId="environment-card" onBeforeScroll={() => onOpenSection?.('environment')}>
       <PillHeader
         icon={<Sun className="h-4 w-4 shrink-0 text-yellow-400" aria-hidden="true" />}
         label="Brightness"
@@ -153,9 +157,9 @@ function BrightnessPill({ lux }: { lux: InsightsData['lux'] }) {
 
 // ── Battery pill ──────────────────────────────────────────────────────────────
 
-function BatteryPill({ battery }: { battery: InsightsData['battery'] }) {
+function BatteryPill({ battery, onOpenSection }: { battery: InsightsData['battery']; onOpenSection?: (sectionId: string) => void }) {
   return (
-    <Pill ariaLabel="Battery fleet summary" scrollTargetId="battery-card">
+    <Pill ariaLabel="Battery fleet summary" scrollTargetId="battery-card" onBeforeScroll={() => onOpenSection?.('battery')}>
       <PillHeader
         icon={<Battery className="h-4 w-4 shrink-0 text-green-400" aria-hidden="true" />}
         label="Batteries"
@@ -208,16 +212,16 @@ function BatteryStatusLine({ fleetHealth }: { fleetHealth: FleetHealth }) {
 
 // ── HomeSummaryStrip ──────────────────────────────────────────────────────────
 
-export default function HomeSummaryStrip({ insights }: HomeSummaryStripProps) {
+export default function HomeSummaryStrip({ insights, onOpenSection }: HomeSummaryStripProps) {
   return (
     <div
       className="grid grid-cols-1 gap-3 sm:grid-cols-3"
       role="region"
       aria-label="Home summary"
     >
-      <TemperaturePill temperature={insights.temperature} />
-      <BrightnessPill lux={insights.lux} />
-      <BatteryPill battery={insights.battery} />
+      <TemperaturePill temperature={insights.temperature} onOpenSection={onOpenSection} />
+      <BrightnessPill lux={insights.lux} onOpenSection={onOpenSection} />
+      <BatteryPill battery={insights.battery} onOpenSection={onOpenSection} />
     </div>
   )
 }

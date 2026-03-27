@@ -389,3 +389,19 @@
 - **Branch cleanup**: done
 - **Summary**: WS1-WS4 consolidated. Backend energy cost from Kasa hardware memory. Homepage visual indicators (lux icons, temp colours, footprints). Contextualised cost on room detail and insights. Sonos-Kasa device linking with cost attribution. Kasa device detail cost headline.
 - **Files**: 15 files changed (+1,879 lines) — insights-engine.ts, dashboard.ts, device-links.ts (new), db/index.ts, index.ts, sonos.ts, api.ts, utils.ts, HomePage.tsx, EnergyCard.tsx, RoomIntelligence.tsx, SonosDetailPage.tsx, DeviceDetailPage.tsx, SonosSetupPage.tsx
+
+## PR #60 — Add activity insights to dashboard
+- **Branch**: feature/activity-insights → dev
+- **Created**: 2026-03-27
+- **Status**: merged
+- **Merge date**: 2026-03-27
+- **Branch cleanup**: done
+- **Summary**: Backend computeActivityInsights() in insights-engine.ts. Room ranking horizontal bar chart with per-room colours, multi-room hourly area/line chart, stacked daily trend, interactive room toggle pills with icons. Three distinct chart types for visual variety. Per-room breakdown data (hourlyByRoom, dailyByRoom) enables client-side filtering.
+- **Files**: server/src/lib/insights-engine.ts, client/src/components/dashboard/ActivityCard.tsx, client/src/lib/api.ts, .specs/DATA_JOURNEY_PLAN.md
+
+## PR #61 — Progressive disclosure, activity charts, WCAG contrast fix
+- **Branch**: feature/insights-progressive-disclosure → dev
+- **Created**: 2026-03-27
+- **Status**: open
+- **Summary**: All Insights cards wrapped in Accordion (auto-open on anomalies/alerts). Restored chart-first ActivityCard from PR #60 (horizontal bars, area/line hourly, stacked daily, room toggles with icons, footprints badge). WCAG AA contrast fix for fairy accent colours globally (theme-aware CSS vars). Accordion layout fixed (trailing right-aligned, title inline). EnvironmentCard room links. HomeSummaryStrip removed.
+- **Files**: 13 files — insights-engine.ts, api.ts, index.css, Accordion.tsx, DashboardPage.tsx, ActivityCard.tsx, AttentionBar.tsx, BatteryCard.tsx, EnergyCard.tsx, EnvironmentCard.tsx, SunModeCard.tsx, HomeSummaryStrip.tsx, DATA_JOURNEY_PLAN.md

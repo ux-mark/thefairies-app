@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
 import type { BatteryDevice, BatteryInsights } from '@/lib/api'
+import { Accordion } from '@/components/ui/Accordion'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -281,9 +282,11 @@ function UrgencyBandSection({ band, items, defaultOpen }: UrgencyBandSectionProp
 interface BatteryCardProps {
   battery: BatteryDevice[]
   insights?: BatteryInsights | null
+  open: boolean
+  onToggle: () => void
 }
 
-export default function BatteryCard({ battery, insights }: BatteryCardProps) {
+export default function BatteryCard({ battery, insights, open, onToggle }: BatteryCardProps) {
   const selectId = useId()
 
   // Sort lowest battery first (worst cases at the top)
@@ -324,69 +327,88 @@ export default function BatteryCard({ battery, insights }: BatteryCardProps) {
     )
   }
 
-  // ── All-healthy compact state ─────────────────────────────────────────────
+  // ── Trailing summary for Accordion header ────────────────────────────────────
+  const trailingSummary = insights ? (
+    (() => {
+      const { healthy, low, critical, total } = insights.fleetHealth
+      if (low === 0 && critical === 0) {
+        return (
+          <span className="text-xs font-medium text-green-400">
+            {healthy}/{total} healthy
+          </span>
+        )
+      }
+      const attentionCount = low + critical
+      return (
+        <span className="text-xs font-medium text-amber-400">
+          {attentionCount} need{attentionCount === 1 ? 's' : ''} attention
+        </span>
+      )
+    })()
+  ) : (
+    <span className="text-xs font-medium text-[var(--text-secondary)]">
+      {battery.length} {battery.length === 1 ? 'device' : 'devices'}
+    </span>
+  )
 
-  if (allHealthy && !listExpanded) {
-    return (
-      <section id="battery-card" aria-label="Battery health" className="card rounded-xl border p-5">
-        <header className="mb-4 flex items-center gap-2">
-          <Battery className="h-4 w-4 text-green-400" aria-hidden="true" />
-          <h2 className="text-heading text-base font-semibold">Battery health</h2>
-        </header>
+  const accordionTitle = (
+    <>
+      <Battery className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+      Battery health
+    </>
+  )
 
-        <div className="flex items-center justify-between gap-3 rounded-lg bg-green-500/8 px-4 py-3 ring-1 ring-green-500/20">
-          {insights ? (
-            <FleetHealthSummary fleetHealth={insights.fleetHealth} />
-          ) : (
-            <p className="text-sm font-medium text-green-400">
-              All {battery.length} {battery.length === 1 ? 'battery' : 'batteries'} are healthy
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => setListExpanded(true)}
-            className={cn(
-              'shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-green-400',
-              'hover:bg-green-500/15 transition-colors',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-              'min-h-[44px] min-w-[44px]',
-            )}
-          >
-            View details
-          </button>
+  // ── All-healthy compact state (rendered inside Accordion body) ───────────────
+
+  const allHealthyContent = allHealthy && !listExpanded ? (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-green-500/8 px-4 py-3 ring-1 ring-green-500/20">
+      {insights ? (
+        <FleetHealthSummary fleetHealth={insights.fleetHealth} />
+      ) : (
+        <p className="text-sm font-medium text-green-400">
+          All {battery.length} {battery.length === 1 ? 'battery' : 'batteries'} are healthy
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setListExpanded(true)}
+        className={cn(
+          'shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-green-400',
+          'hover:bg-green-500/15 transition-colors',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+          'min-h-[44px] min-w-[44px]',
+        )}
+      >
+        View details
+      </button>
+    </div>
+  ) : null
+
+  // ── Full device list ──────────────────────────────────────────────────────────
+
+  const deviceListContent = (!allHealthy || listExpanded) ? (
+    <>
+      {/* Fleet health summary (insights-aware) */}
+      {insights && (
+        <div className="mb-3">
+          <FleetHealthSummary fleetHealth={insights.fleetHealth} />
         </div>
-      </section>
-    )
-  }
+      )}
 
-  return (
-    <section id="battery-card" aria-label="Battery health" className="card rounded-xl border p-5">
-      {/* Header */}
-      <header className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Battery className="h-4 w-4 text-green-400" aria-hidden="true" />
-          <h2 className="text-heading text-base font-semibold">Battery health</h2>
-        </div>
-        {/* If we expanded from the all-healthy compact state, offer to collapse back */}
-        {allHealthy && listExpanded && (
+      {/* Collapse link when all-healthy was expanded */}
+      {allHealthy && listExpanded && (
+        <div className="mb-3">
           <button
             type="button"
             onClick={() => setListExpanded(false)}
             className={cn(
               'text-caption text-xs hover:text-body transition-colors',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-              'min-h-[44px] min-w-[44px] flex items-center justify-end',
+              'min-h-[44px] flex items-center',
             )}
           >
-            Collapse
+            Show compact view
           </button>
-        )}
-      </header>
-
-      {/* Fleet health summary (insights-aware) */}
-      {insights && (
-        <div className="mb-3">
-          <FleetHealthSummary fleetHealth={insights.fleetHealth} />
         </div>
       )}
 
@@ -488,6 +510,18 @@ export default function BatteryCard({ battery, insights }: BatteryCardProps) {
           </div>
         )}
       </div>
-    </section>
+    </>
+  ) : null
+
+  return (
+    <Accordion
+      id="battery-card"
+      title={accordionTitle}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open ? trailingSummary : undefined}
+    >
+      {allHealthy && !listExpanded ? allHealthyContent : deviceListContent}
+    </Accordion>
   )
 }
