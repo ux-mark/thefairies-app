@@ -11,6 +11,7 @@ import { Activity } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ActivityInsights } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { Accordion } from '@/components/ui/Accordion'
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip)
 
@@ -164,9 +165,18 @@ function RoomRankingRow({ entry, rank, maxEvents }: RoomRankingRowProps) {
 
 interface ActivityCardProps {
   activity: ActivityInsights | null
+  open: boolean
+  onToggle: () => void
 }
 
-export default function ActivityCard({ activity }: ActivityCardProps) {
+export default function ActivityCard({ activity, open, onToggle }: ActivityCardProps) {
+  const accordionTitle = (
+    <>
+      <Activity className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+      Activity
+    </>
+  )
+
   // ── Empty state ──────────────────────────────────────────────────────────────
   if (!activity) {
     return (
@@ -196,18 +206,21 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
   const { roomRanking, dailyTrend, mostActiveRoom, quietestRoom } = activity
   const maxEvents = roomRanking[0]?.events24h ?? 0
 
-  return (
-    <section
-      id="activity-card"
-      aria-label="Activity patterns"
-      className="card rounded-xl border p-5"
-    >
-      {/* Header */}
-      <header className="mb-4 flex items-center gap-2">
-        <Activity className="h-4 w-4 text-fairy-400" aria-hidden="true" />
-        <h2 className="text-heading text-base font-semibold">Activity</h2>
-      </header>
+  // ── Trailing summary for Accordion header ────────────────────────────────────
+  const trailingSummary = mostActiveRoom ? (
+    <span className="text-xs font-medium text-[var(--text-secondary)]">
+      {mostActiveRoom.room} · {mostActiveRoom.events24h} event{mostActiveRoom.events24h !== 1 ? 's' : ''}
+    </span>
+  ) : null
 
+  return (
+    <Accordion
+      id="activity-card"
+      title={accordionTitle}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open ? trailingSummary : undefined}
+    >
       {/* Most / quietest active room callout */}
       {mostActiveRoom && (
         <div className="mb-4 space-y-1">
@@ -262,6 +275,6 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
         <h3 className="text-caption mb-3 text-xs font-medium">7-day activity trend</h3>
         <DailyTrendChart trend={dailyTrend} />
       </div>
-    </section>
+    </Accordion>
   )
 }

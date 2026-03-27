@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useMemo } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { api } from '@/lib/api'
 import AttentionBar from '@/components/dashboard/AttentionBar'
@@ -60,6 +61,38 @@ export default function DashboardPage() {
     refetchInterval: 30_000,
   })
 
+  // ── Progressive disclosure: per-section open/closed state ─────────────────
+  // Auto-open defaults derived from data (recomputed when data changes)
+  const autoDefaults = useMemo(() => {
+    if (!data) return {} as Record<string, boolean>
+    const insights = data.insights
+    return {
+      attention: insights?.attention.some(i => i.severity === 'critical') ?? false,
+      energy: (insights?.energy?.deviceAnomalies?.length ?? 0) > 0,
+      environment: (insights?.temperature?.roomOutliers?.length ?? 0) > 0,
+      battery:
+        (insights?.battery?.fleetHealth.critical ?? 0) > 0 ||
+        (insights?.battery?.fleetHealth.low ?? 0) > 0,
+      activity: false,
+      sun: false,
+    }
+  }, [data])
+
+  // User overrides — only populated when the user explicitly toggles a section
+  const [userOverrides, setUserOverrides] = useState<Record<string, boolean>>({})
+
+  // Merged state: user overrides take precedence over auto-open defaults
+  const openSections = useMemo(
+    () => ({ ...autoDefaults, ...userOverrides }),
+    [autoDefaults, userOverrides],
+  )
+
+  const toggle = (key: string) =>
+    setUserOverrides(prev => ({ ...prev, [key]: !openSections[key] }))
+
+  const openSection = (key: string) =>
+    setUserOverrides(prev => ({ ...prev, [key]: true }))
+
   return (
     <div>
       <div className="mb-6 flex items-center gap-2">
@@ -79,12 +112,16 @@ export default function DashboardPage() {
         <div className="space-y-4">
           {/* Attention bar — only renders when there are items */}
           {data.insights?.attention && data.insights.attention.length > 0 && (
-            <AttentionBar items={data.insights.attention} />
+            <AttentionBar
+              items={data.insights.attention}
+              open={openSections.attention ?? false}
+              onToggle={() => toggle('attention')}
+            />
           )}
 
-          {/* Home summary strip — 4 stat pills */}
+          {/* Home summary strip — 3 stat pills */}
           {data.insights && (
-            <HomeSummaryStrip insights={data.insights} />
+            <HomeSummaryStrip insights={data.insights} onOpenSection={openSection} />
           )}
 
           {/* Detail cards — main column (2/3) + side column (1/3) on desktop */}
@@ -95,15 +132,23 @@ export default function DashboardPage() {
                 power={data.power}
                 insights={data.insights?.energy ?? null}
                 currencySymbol={data.currencySymbol}
+                open={openSections.energy ?? false}
+                onToggle={() => toggle('energy')}
               />
               <EnvironmentCard
                 weather={data.weather}
                 rooms={data.rooms}
                 tempInsights={data.insights?.temperature ?? null}
                 luxInsights={data.insights?.lux ?? null}
+                open={openSections.environment ?? false}
+                onToggle={() => toggle('environment')}
               />
               {data.insights?.activity && (
-                <ActivityCard activity={data.insights.activity} />
+                <ActivityCard
+                  activity={data.insights.activity}
+                  open={openSections.activity ?? false}
+                  onToggle={() => toggle('activity')}
+                />
               )}
             </div>
             {/* Side column */}
@@ -111,12 +156,16 @@ export default function DashboardPage() {
               <BatteryCard
                 battery={data.battery}
                 insights={data.insights?.battery ?? null}
+                open={openSections.battery ?? false}
+                onToggle={() => toggle('battery')}
               />
               <SunModeCard
                 mode={data.mode}
                 sunSchedule={data.sunSchedule}
                 sunPhase={data.sunPhase}
                 sunTimes={data.sunTimes}
+                open={openSections.sun ?? false}
+                onToggle={() => toggle('sun')}
               />
             </div>
           </div>

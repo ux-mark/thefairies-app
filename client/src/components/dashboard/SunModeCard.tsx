@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import type { SunScheduleEntry } from '@/lib/api'
 import { LucideIcon } from '@/components/ui/LucideIcon'
+import { Accordion } from '@/components/ui/Accordion'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,8 @@ interface SunModeCardProps {
   sunSchedule: SunScheduleEntry[]
   sunPhase: string
   sunTimes: Record<string, string>
+  open: boolean
+  onToggle: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -181,6 +184,8 @@ export default function SunModeCard({
   sunSchedule,
   sunPhase,
   sunTimes,
+  open,
+  onToggle,
 }: SunModeCardProps) {
   const now = new Date()
 
@@ -203,17 +208,31 @@ export default function SunModeCard({
     ? (parseTime(nextTransition.time)?.label ?? null)
     : null
 
-  return (
-    <section
-      aria-label="Sun and mode"
-      className="card rounded-xl border p-5"
-    >
-      {/* Header */}
-      <header className="mb-4 flex items-center gap-2">
-        <Sun className="h-4 w-4 text-amber-400" aria-hidden="true" />
-        <h2 className="text-heading text-base font-semibold">Sun and mode</h2>
-      </header>
+  const accordionTitle = (
+    <>
+      <Sun className="h-4 w-4 text-amber-400" aria-hidden="true" />
+      Sun and mode
+    </>
+  )
 
+  // ── Trailing summary for Accordion header ────────────────────────────────────
+  const trailingSummary = (
+    <span className="flex items-center gap-2">
+      <ModeBadge label={mode} icon={modeIcons[mode] ?? null} />
+      {sunPhase && sunPhase.toLowerCase() !== mode.toLowerCase() && (
+        <span className="text-xs text-[var(--text-secondary)]">{sunPhase}</span>
+      )}
+    </span>
+  )
+
+  return (
+    <Accordion
+      id="sun-mode-card"
+      title={accordionTitle}
+      open={open}
+      onToggle={onToggle}
+      trailing={!open ? trailingSummary : undefined}
+    >
       {/* Current mode + sun phase row */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <ModeBadge label={mode} icon={modeIcons[mode] ?? null} />
@@ -273,6 +292,6 @@ export default function SunModeCard({
       {sunSchedule.length > 0 && (
         <SunTimeline schedule={sunSchedule} now={now} />
       )}
-    </section>
+    </Accordion>
   )
 }
