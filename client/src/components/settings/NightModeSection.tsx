@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import { Section } from './Section'
+import { LucideIcon } from '@/components/ui/LucideIcon'
 
 export function NightModeSection() {
   const queryClient = useQueryClient()
@@ -64,7 +65,7 @@ export function NightModeSection() {
 
   const wakeMode = prefs?.night_wake_mode || 'Morning'
   const allModes = system?.all_modes ?? []
-  const roomNames = (rooms ?? []).sort((a, b) => a.display_order - b.display_order).map(r => r.name)
+  const sortedRooms = (rooms ?? []).sort((a, b) => a.display_order - b.display_order)
 
   const toggleRoom = (prefKey: string, current: string[], roomName: string) => {
     const next = current.includes(roomName)
@@ -111,21 +112,22 @@ export function NightModeSection() {
             All lights turn off when you tap Nighttime, but these rooms stay unlocked and will respond to motion during the night with their Sleep Time scene.
           </p>
           <div className="flex flex-wrap gap-2">
-            {roomNames.map(name => {
-              const checked = nightExclude.includes(name)
+            {sortedRooms.map(room => {
+              const checked = nightExclude.includes(room.name)
               return (
                 <button
-                  key={name}
-                  onClick={() => toggleRoom('night_exclude_rooms', nightExclude, name)}
+                  key={room.name}
+                  onClick={() => toggleRoom('night_exclude_rooms', nightExclude, room.name)}
                   disabled={mutation.isPending}
                   className={cn(
-                    'rounded-lg px-3 py-2 text-sm font-medium transition-colors min-h-[44px]',
+                    'flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors min-h-[44px]',
                     checked
                       ? 'bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-500/30'
                       : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
                   )}
                 >
-                  {name}
+                  <LucideIcon name={room.icon} className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {room.name}
                 </button>
               )
             })}
@@ -139,21 +141,22 @@ export function NightModeSection() {
             These rooms keep their lights on when you tap Guest Night -- for when the guest goes to bed but others are still up. All other rooms turn off and lock.
           </p>
           <div className="flex flex-wrap gap-2">
-            {roomNames.map(name => {
-              const checked = guestExclude.includes(name)
+            {sortedRooms.map(room => {
+              const checked = guestExclude.includes(room.name)
               return (
                 <button
-                  key={name}
-                  onClick={() => toggleRoom('guest_night_exclude_rooms', guestExclude, name)}
+                  key={room.name}
+                  onClick={() => toggleRoom('guest_night_exclude_rooms', guestExclude, room.name)}
                   disabled={mutation.isPending}
                   className={cn(
-                    'rounded-lg px-3 py-2 text-sm font-medium transition-colors min-h-[44px]',
+                    'flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors min-h-[44px]',
                     checked
                       ? 'bg-purple-500/15 text-purple-400 ring-1 ring-purple-500/30'
                       : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
                   )}
                 >
-                  {name}
+                  <LucideIcon name={room.icon} className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {room.name}
                 </button>
               )
             })}

@@ -4,6 +4,7 @@ import { ArrowLeft, Power, Moon, AlertTriangle, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Room, Scene } from '@/lib/api'
+import { LucideIcon } from '@/components/ui/LucideIcon'
 
 // ── Room scene list ──────────────────────────────────────────────────────────
 
@@ -53,7 +54,8 @@ function WatchRoomView({
         <ArrowLeft className="h-5 w-5" />
       </button>
 
-      <h2 className="mb-3 text-center text-lg font-bold text-heading">
+      <h2 className="mb-3 flex items-center justify-center gap-2 text-center text-lg font-bold text-heading">
+        <LucideIcon name={room.icon} className="h-5 w-5 text-fairy-400" aria-hidden="true" />
         {room.name}
       </h2>
 
@@ -203,7 +205,8 @@ export default function WatchPage() {
                   : 'surface',
               )}
             >
-              <span className="text-base font-semibold text-heading">
+              <span className="flex items-center gap-2 text-base font-semibold text-heading">
+                <LucideIcon name={room.icon} className="h-4 w-4 shrink-0" aria-hidden="true" />
                 {room.name}
               </span>
               {room.current_scene && (

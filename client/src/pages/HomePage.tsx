@@ -112,7 +112,8 @@ function RoomCard({
   return (
     <div className="card rounded-xl border p-4 transition-colors" style={{ borderColor: 'var(--border-primary)' }}>
       <div className="mb-3 flex items-start justify-between">
-        <div>
+        <div className="flex items-center gap-2">
+          <LucideIcon name={room.icon} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
           <h3 className="text-heading text-base font-semibold">
             {room.name}
           </h3>

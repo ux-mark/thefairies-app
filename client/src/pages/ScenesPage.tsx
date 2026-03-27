@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Scene } from '@/lib/api'
+import { LucideIcon } from '@/components/ui/LucideIcon'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import {
@@ -71,9 +72,10 @@ interface SceneRowProps {
   isActive: boolean
   isDefault: boolean
   showRoomBadges?: boolean
+  roomIconMap?: Record<string, string | null>
 }
 
-function SceneRow({ scene, isDefault, isActive, showRoomBadges }: SceneRowProps) {
+function SceneRow({ scene, isDefault, isActive, showRoomBadges, roomIconMap }: SceneRowProps) {
   const season = isSceneInSeason(scene)
   const roomList = Array.isArray(scene.rooms) ? scene.rooms : []
 
@@ -113,8 +115,9 @@ function SceneRow({ scene, isDefault, isActive, showRoomBadges }: SceneRowProps)
           {showRoomBadges && roomList.filter(r => r?.name).map(r => (
             <span
               key={r.name}
-              className="surface text-caption rounded-full px-2 py-0.5 text-[10px] font-medium"
+              className="surface text-caption inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
             >
+              <LucideIcon name={roomIconMap?.[r.name] ?? null} className="h-3 w-3 shrink-0" aria-hidden="true" />
               {r.name}
             </span>
           ))}
@@ -146,24 +149,28 @@ function SceneRow({ scene, isDefault, isActive, showRoomBadges }: SceneRowProps)
 
 interface RoomAccordionProps {
   roomName: string
+  roomIcon: string | null | undefined
   allScenes: Scene[]
   filteredScenes: Scene[]
   activeSceneNames: Set<string>
   defaultScenes: Record<string, Record<string, string>> | undefined
   systemModes: string[] | undefined
   modeIcons: Record<string, string | null> | undefined
+  roomIconMap: Record<string, string | null>
   isOpen: boolean
   onToggle: () => void
 }
 
 function RoomAccordion({
   roomName,
+  roomIcon,
   allScenes,
   filteredScenes,
   activeSceneNames,
   defaultScenes,
   systemModes,
   modeIcons,
+  roomIconMap,
   isOpen,
   onToggle,
 }: RoomAccordionProps) {
@@ -200,10 +207,17 @@ function RoomAccordion({
 
   const accordionId = `room-${roomName.replace(/\s+/g, '-').toLowerCase()}`
 
+  const accordionTitle = (
+    <span className="flex items-center gap-1.5">
+      <LucideIcon name={roomIcon} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
+      {roomName}
+    </span>
+  )
+
   return (
     <Accordion
       id={accordionId}
-      title={roomName}
+      title={accordionTitle}
       open={isOpen}
       onToggle={onToggle}
       count={sceneCount}
@@ -254,6 +268,7 @@ function RoomAccordion({
               scene={scene}
               isActive={activeSceneNames.has(scene.name)}
               isDefault={isDefault}
+              roomIconMap={roomIconMap}
             />
           )
         })
@@ -274,9 +289,10 @@ interface FlatSceneRowProps {
   scene: Scene
   isActive: boolean
   label?: React.ReactNode
+  roomIconMap?: Record<string, string | null>
 }
 
-function FlatSceneRow({ scene, isActive, label }: FlatSceneRowProps) {
+function FlatSceneRow({ scene, isActive, label, roomIconMap }: FlatSceneRowProps) {
   const season = isSceneInSeason(scene)
   const roomList = Array.isArray(scene.rooms) ? scene.rooms : []
 
@@ -310,8 +326,9 @@ function FlatSceneRow({ scene, isActive, label }: FlatSceneRowProps) {
           {roomList.filter(r => r?.name).map(r => (
             <span
               key={r.name}
-              className="surface text-caption rounded-full px-2 py-0.5 text-[10px] font-medium"
+              className="surface text-caption inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
             >
+              <LucideIcon name={roomIconMap?.[r.name] ?? null} className="h-3 w-3 shrink-0" aria-hidden="true" />
               {r.name}
             </span>
           ))}
@@ -360,6 +377,12 @@ export default function ScenesPage() {
     queryKey: ['system', 'current'],
     queryFn: api.system.getCurrent,
   })
+
+  // Room icon lookup: room name → icon
+  const roomIconMap = useMemo<Record<string, string | null>>(
+    () => Object.fromEntries((rooms ?? []).map(r => [r.name, r.icon])),
+    [rooms],
+  )
 
   // Active scene names from room data
   const activeSceneNames = useMemo(
@@ -641,12 +664,14 @@ export default function ScenesPage() {
                     <RoomAccordion
                       key={roomName}
                       roomName={roomName}
+                      roomIcon={roomIconMap[roomName]}
                       allScenes={scenes}
                       filteredScenes={filteredScenes}
                       activeSceneNames={activeSceneNames}
                       defaultScenes={defaultScenes}
                       systemModes={systemCurrent?.all_modes}
                       modeIcons={systemCurrent?.mode_icons}
+                      roomIconMap={roomIconMap}
                       isOpen={computedOpenRooms.has(roomName)}
                       onToggle={() => toggleRoom(roomName)}
                     />
@@ -695,6 +720,7 @@ export default function ScenesPage() {
                         key={scene.name}
                         scene={scene}
                         isActive
+                        roomIconMap={roomIconMap}
                         label={
                           activeInRooms.length > 0
                             ? (
@@ -702,8 +728,9 @@ export default function ScenesPage() {
                                   {activeInRooms.map(rn => (
                                     <span
                                       key={rn}
-                                      className="surface text-caption rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                      className="surface text-caption inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                                     >
+                                      <LucideIcon name={roomIconMap[rn] ?? null} className="h-3 w-3 shrink-0" aria-hidden="true" />
                                       {rn}
                                     </span>
                                   ))}
@@ -735,6 +762,7 @@ export default function ScenesPage() {
                       key={scene.name}
                       scene={scene}
                       isActive={activeSceneNames.has(scene.name)}
+                      roomIconMap={roomIconMap}
                       label={
                         scene.last_activated_at
                           ? formatRelativeTime(scene.last_activated_at)
@@ -763,6 +791,7 @@ export default function ScenesPage() {
                       key={scene.name}
                       scene={scene}
                       isActive={activeSceneNames.has(scene.name)}
+                      roomIconMap={roomIconMap}
                       label={
                         scene.last_activated_at
                           ? formatRelativeTime(scene.last_activated_at)

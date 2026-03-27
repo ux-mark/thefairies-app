@@ -40,6 +40,7 @@ import { PillSelect } from '@/components/ui/PillSelect'
 import { CardRadioGroup } from '@/components/ui/CardRadioGroup'
 import { getScenesForRoom, getModesForRoom, getDefaultScene, isSceneInSeason } from '@/lib/scene-utils'
 import { LucideIcon } from '@/components/ui/LucideIcon'
+import { IconPicker } from '@/components/ui/IconPicker'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -539,6 +540,7 @@ export default function RoomDetailPage() {
   const [parentRoom, setParentRoom] = useState<string | null>(null)
   const [sensors, setSensors] = useState<Sensor[] | null>(null)
   const [_roomNameEdit, _setRoomNameEdit] = useState<string | null>(null)
+  const [iconPickerOpen, setIconPickerOpen] = useState(false)
 
   // Compute effective values (from state or room data)
   const effectiveOrder = displayOrder ?? room?.display_order ?? 0
@@ -997,6 +999,17 @@ export default function RoomDetailPage() {
       toast({ message: 'Failed to delete room', type: 'error' }),
   })
 
+  const updateIconMutation = useMutation({
+    mutationFn: (icon: string) => api.rooms.update(name!, { icon }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms', name] })
+      queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      toast({ message: 'Room icon updated' })
+    },
+    onError: () =>
+      toast({ message: 'Failed to update room icon', type: 'error' }),
+  })
+
   // Handlers
   const handleAssign = (light: Light) => {
     const newAssigned = [...effectiveAssigned, toAssignment(light)]
@@ -1222,6 +1235,40 @@ export default function RoomDetailPage() {
         <BackLink to="/rooms" label="All Rooms" className="mb-3" />
 
         <div className="flex items-center gap-3">
+          {/* Room icon — click to change, or show add-icon button if none set */}
+          <div className="relative">
+            {room.icon ? (
+              <button
+                type="button"
+                onClick={() => setIconPickerOpen(v => !v)}
+                aria-label="Change room icon"
+                title="Change room icon"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-fairy-400 transition-colors hover:bg-fairy-500/15 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fairy-500"
+              >
+                <LucideIcon name={room.icon} className="h-5 w-5" aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIconPickerOpen(v => !v)}
+                aria-label="Add room icon"
+                title="Add room icon"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-[var(--border-secondary)] text-caption transition-colors hover:border-fairy-500/50 hover:text-fairy-400 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fairy-500"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+            {iconPickerOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1">
+                <IconPicker
+                  value={room.icon}
+                  onChange={(iconName) => updateIconMutation.mutate(iconName)}
+                  onClose={() => setIconPickerOpen(false)}
+                />
+              </div>
+            )}
+          </div>
+
           <h2 className="text-xl font-semibold text-heading">
             {room.name}
           </h2>

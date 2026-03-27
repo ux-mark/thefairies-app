@@ -12,6 +12,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LucideIcon } from '@/components/ui/LucideIcon'
 
 function RoomCardSkeleton() {
   return (
@@ -154,7 +155,8 @@ export default function RoomsPage() {
                 className="card flex items-center gap-4 rounded-xl border p-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
               >
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-heading text-base font-semibold">
+                  <h3 className="flex items-center gap-2 text-heading text-base font-semibold">
+                    <LucideIcon name={room.icon} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
                     {room.name}
                   </h3>
                   <div className="text-body mt-1 flex flex-wrap items-center gap-3 text-xs">

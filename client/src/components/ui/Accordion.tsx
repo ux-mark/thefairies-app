@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils'
 interface AccordionProps {
   /** Unique ID prefix for a11y attributes */
   id: string
-  /** Title text shown in the header */
-  title: string
+  /** Title shown in the header — accepts a string or a ReactNode (e.g. icon + text) */
+  title: React.ReactNode
   /** Whether the accordion is currently open */
   open: boolean
   /** Toggle callback */
