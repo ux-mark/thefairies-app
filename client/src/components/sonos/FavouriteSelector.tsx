@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { ListMusic, Radio, Disc3, Music, Folder, RotateCcw, ImageOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SonosFavourite } from '@/lib/api'
@@ -54,7 +54,30 @@ export function FavouriteSelector({
   id,
   includeContinue = true,
 }: FavouriteSelectorProps) {
-  const [selectedType, setSelectedType] = useState<ContentType | 'All'>('All')
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // On mount, if a value is pre-selected, set the type filter to its content type
+  // and scroll it into view
+  const initialValue = useRef(value)
+  const [selectedType, setSelectedType] = useState<ContentType | 'All'>(() => {
+    if (!value || value === '__continue__') return 'All'
+    const fav = favourites.find(f => f.title === value)
+    if (!fav) return 'All'
+    return getContentType(fav.uri)
+  })
+
+  useEffect(() => {
+    if (!initialValue.current || initialValue.current === '__continue__') return
+    // Wait a tick for the list to render with the correct filter
+    requestAnimationFrame(() => {
+      const container = listRef.current
+      if (!container) return
+      const selectedEl = container.querySelector('[aria-selected="true"]') as HTMLElement | null
+      if (selectedEl) {
+        selectedEl.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }
+    })
+  }, [])
 
   // Determine which content types are present in the favourites list
   const presentTypes = useMemo<ContentType[]>(() => {
@@ -126,6 +149,7 @@ export function FavouriteSelector({
 
       {/* Favourite item list */}
       <div
+        ref={listRef}
         id={id}
         role="listbox"
         aria-label="Select a favourite"
