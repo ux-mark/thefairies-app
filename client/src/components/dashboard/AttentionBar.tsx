@@ -31,8 +31,8 @@ function sortBySeverity(items: AttentionItem[]): AttentionItem[] {
 
 interface ItemCardProps {
   item: AttentionItem
-  onDeactivate: (type: string, id: string, label?: string) => void
-  onReactivate: (type: string, id: string, label?: string) => void
+  onDeactivate: (itemId: string, type: string, id: string, label?: string) => void
+  onReactivate: (itemId: string, type: string, id: string, label?: string) => void
 }
 
 function ItemCard({ item, onDeactivate, onReactivate }: ItemCardProps) {
@@ -112,7 +112,7 @@ function ItemCard({ item, onDeactivate, onReactivate }: ItemCardProps) {
             {/* Deactivate action for unreachable devices */}
             {item.action === 'deactivate' && item.deviceType && item.deviceId && (
               <button
-                onClick={() => onDeactivate(String(item.deviceType), String(item.deviceId), item.deviceLabel ?? undefined)}
+                onClick={() => onDeactivate(item.id, String(item.deviceType), String(item.deviceId), item.deviceLabel ?? undefined)}
                 className={cn(
                   'text-sm text-amber-400',
                   'hover:bg-amber-500/10 rounded-lg px-3 py-2',
@@ -127,7 +127,7 @@ function ItemCard({ item, onDeactivate, onReactivate }: ItemCardProps) {
             {/* Reactivate action for devices that came back online */}
             {item.action === 'reactivate' && item.deviceType && item.deviceId && (
               <button
-                onClick={() => onReactivate(String(item.deviceType), String(item.deviceId), item.deviceLabel ?? undefined)}
+                onClick={() => onReactivate(item.id, String(item.deviceType), String(item.deviceId), item.deviceLabel ?? undefined)}
                 className={cn(
                   'text-sm text-emerald-400',
                   'hover:bg-emerald-500/10 rounded-lg px-3 py-2',
@@ -155,44 +155,57 @@ const INITIAL_VISIBLE = 5
  */
 export default function AttentionBar({ items }: AttentionBarProps) {
   const [expanded, setExpanded] = useState(false)
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    queryClient.invalidateQueries({ queryKey: ['devices'] })
+    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+  }
+
   const deactivateMutation = useMutation({
-    mutationFn: ({ type, id, label }: { type: string; id: string; label?: string }) =>
-      api.devices.deactivate(type, id).then(() => label),
+    mutationFn: ({ itemId, type, id, label }: { itemId: string; type: string; id: string; label?: string }) => {
+      setDismissedIds(prev => new Set(prev).add(itemId))
+      return api.devices.deactivate(type, id).then(() => label)
+    },
     onSuccess: (label) => {
       toast({ message: `${label ?? 'Device'} deactivated` })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ queryKey: ['devices'] })
-      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      invalidateAll()
     },
-    onError: () => {
+    onError: (_err, { itemId }) => {
+      setDismissedIds(prev => { const next = new Set(prev); next.delete(itemId); return next })
       toast({ message: 'Failed to deactivate device', type: 'error' })
     },
   })
 
   const reactivateMutation = useMutation({
-    mutationFn: ({ type, id, label }: { type: string; id: string; label?: string }) =>
-      api.devices.reactivate(type, id).then(() => label),
+    mutationFn: ({ itemId, type, id, label }: { itemId: string; type: string; id: string; label?: string }) => {
+      setDismissedIds(prev => new Set(prev).add(itemId))
+      return api.devices.reactivate(type, id).then(() => label)
+    },
     onSuccess: (label) => {
       toast({ message: `${label ?? 'Device'} reactivated` })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ queryKey: ['devices'] })
-      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      invalidateAll()
     },
-    onError: () => {
+    onError: (_err, { itemId }) => {
+      setDismissedIds(prev => { const next = new Set(prev); next.delete(itemId); return next })
       toast({ message: 'Failed to reactivate device', type: 'error' })
     },
   })
 
-  const handleDeactivate = (type: string, id: string, label?: string) => deactivateMutation.mutate({ type, id, label })
-  const handleReactivate = (type: string, id: string, label?: string) => reactivateMutation.mutate({ type, id, label })
+  const handleDeactivate = (itemId: string, type: string, id: string, label?: string) =>
+    deactivateMutation.mutate({ itemId, type, id, label })
+  const handleReactivate = (itemId: string, type: string, id: string, label?: string) =>
+    reactivateMutation.mutate({ itemId, type, id, label })
+
+  const visibleItems = items.filter(item => !dismissedIds.has(item.id))
 
   // Nothing to show — silence is the success state here
-  if (items.length === 0) return null
+  if (visibleItems.length === 0) return null
 
-  const sorted = sortBySeverity(items)
+  const sorted = sortBySeverity(visibleItems)
   const hasMore = sorted.length > INITIAL_VISIBLE
   const visible = expanded ? sorted : sorted.slice(0, INITIAL_VISIBLE)
   const hiddenCount = sorted.length - INITIAL_VISIBLE
