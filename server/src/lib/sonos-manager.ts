@@ -17,7 +17,6 @@ interface RoomRow {
   auto: number
   timer: number
   sonos_follow_me: number
-  sonos_auto_start: number
 }
 
 interface AutoPlayRow {
@@ -112,26 +111,6 @@ class SonosManager {
     return this.roomSpeakerMap.get(roomName)
   }
 
-  private getDefaultFavourite(roomName: string): string | null {
-    // Check room-specific favourite first
-    const speaker = getOne<SonosSpeakerRow>(
-      'SELECT * FROM sonos_speakers WHERE room_name = ?',
-      [roomName],
-    )
-    if (speaker?.favourite) return speaker.favourite
-
-    // Fall back to global default
-    const pref = getOne<{ value: string }>(
-      "SELECT value FROM current_state WHERE key = 'pref_sonos_default_favourite'",
-    )
-    return pref?.value || null
-  }
-
-  private isAutoStartEnabled(roomName: string): boolean {
-    const room = getOne<RoomRow>('SELECT * FROM rooms WHERE name = ?', [roomName])
-    return room?.sonos_auto_start === 1
-  }
-
   private findPlayingZone(): SonosZone | null {
     return this.zones.find(z => z.coordinator.state.playbackState === 'PLAYING') || null
   }
@@ -178,27 +157,8 @@ class SonosManager {
     const playingZone = this.findPlayingZone()
 
     if (!playingZone) {
-      // Nothing playing anywhere
-      if (!this.isAutoStartEnabled(roomName)) {
-        log(`No music playing, auto-start disabled for ${roomName}`)
-        return
-      }
-
-      const favourite = this.getDefaultFavourite(roomName)
-      if (!favourite) {
-        log(`No music playing and no favourite configured for ${roomName}`)
-        return
-      }
-
-      log(`Starting favourite "${favourite}" on ${speakerName} (${roomName})`)
-      try {
-        await sonosClient.playFavourite(speakerName, favourite)
-        this.anchorRoom = speakerName
-        this.activeFollowMeRooms.add(roomName)
-        this.emitFollowMeUpdate()
-      } catch (err) {
-        log(`Failed to play favourite: ${err instanceof Error ? err.message : String(err)}`)
-      }
+      // Nothing playing anywhere — follow-me only moves already-playing music
+      log(`No music playing, follow-me skipping ${roomName}`)
       return
     }
 
@@ -344,6 +304,12 @@ class SonosManager {
         }
         break
       }
+    }
+
+    // "Continue what's already playing" — conditions passed, nothing to change
+    if (rule.favourite_name === '__continue__') {
+      log(`Auto-play rule ${rule.id}: continuing current playback`)
+      return
     }
 
     log(`Auto-play rule ${rule.id}: playing "${rule.favourite_name}" on ${targetSpeaker}`)

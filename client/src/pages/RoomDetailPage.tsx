@@ -16,6 +16,7 @@ import {
   Square,
   Shield,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   Check,
   ExternalLink,
@@ -24,7 +25,7 @@ import * as Switch from '@radix-ui/react-switch'
 import * as Tabs from '@radix-ui/react-tabs'
 import { io as socketIo } from 'socket.io-client'
 import { api } from '@/lib/api'
-import type { Light, LightAssignment, Sensor, HubDevice, DeviceRoomAssignment, DeactivatedDevice, SonosZone } from '@/lib/api'
+import type { Light, LightAssignment, Sensor, HubDevice, DeviceRoomAssignment, DeactivatedDevice, SonosZone, AutoPlayRule } from '@/lib/api'
 import { cn, getLightColorHex } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
 import { Accordion } from '@/components/ui/Accordion'
@@ -325,6 +326,13 @@ export default function RoomDetailPage() {
   const [scenesOpen, setScenesOpen] = useState(false)
   const [devicesOpen, setDevicesOpen] = useState(false)
 
+  // Inline add auto-play rule form state
+  const [showAddRuleForm, setShowAddRuleForm] = useState(false)
+  const [newRuleFavourite, setNewRuleFavourite] = useState('')
+  const [newRuleMode, setNewRuleMode] = useState('')
+  const [newRuleTriggerType, setNewRuleTriggerType] = useState<'mode_change' | 'if_not_playing' | 'if_source_not'>('mode_change')
+  const [newRuleSourceValue, setNewRuleSourceValue] = useState('')
+
   // Open groups state for available lights and devices
   const [openLightGroups, setOpenLightGroups] = useState<Set<string>>(new Set())
   const [openDeviceGroups, setOpenDeviceGroups] = useState<Set<string>>(new Set())
@@ -426,6 +434,19 @@ export default function RoomDetailPage() {
     enabled: !!name,
   })
 
+  const { data: autoPlayRules } = useQuery({
+    queryKey: ['sonos', 'auto-play'],
+    queryFn: api.sonos.getAutoPlayRules,
+    enabled: !!name,
+    staleTime: 30_000,
+  })
+
+  const { data: sonosModes } = useQuery({
+    queryKey: ['system', 'modes'],
+    queryFn: api.system.getModes,
+    staleTime: 60_000,
+  })
+
   // Find the speaker mapped to this room
   const roomSpeaker = useMemo(
     () => sonosSpeakers?.find(s => s.room_name === name) ?? null,
@@ -473,6 +494,12 @@ export default function RoomDetailPage() {
     if (!roomSpeaker || !sonosFollowMeStatus) return false
     return sonosFollowMeStatus.activeRooms.includes(roomSpeaker.room_name)
   }, [roomSpeaker, sonosFollowMeStatus])
+
+  // Auto-play rules for this room
+  const roomAutoPlayRules = useMemo(
+    () => autoPlayRules?.filter(r => r.room_name === name) ?? [],
+    [autoPlayRules, name],
+  )
 
   // Fetch default scene assignments for this room
   const { data: roomDefaultScenes } = useQuery({
@@ -780,22 +807,36 @@ export default function RoomDetailPage() {
     onError: () => toast({ message: 'Failed to save follow-me setting', type: 'error' }),
   })
 
-  const updateAutoStartMutation = useMutation({
-    mutationFn: (value: boolean) => api.rooms.update(name!, { sonos_auto_start: value }),
+  const createAutoPlayRuleMutation = useMutation({
+    mutationFn: api.sonos.createAutoPlayRule,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rooms', name] })
-      toast({ message: 'Auto-start music setting saved' })
+      queryClient.invalidateQueries({ queryKey: ['sonos', 'auto-play'] })
+      toast({ message: 'Auto-play rule added' })
+      setShowAddRuleForm(false)
+      setNewRuleFavourite('')
+      setNewRuleMode('')
+      setNewRuleTriggerType('mode_change')
+      setNewRuleSourceValue('')
     },
-    onError: () => toast({ message: 'Failed to save auto-start setting', type: 'error' }),
+    onError: () => toast({ message: 'Failed to add rule', type: 'error' }),
   })
 
-  const updateRoomFavouriteMutation = useMutation({
-    mutationFn: (favourite: string | null) => api.sonos.updateSpeaker(name!, { favourite }),
+  const deleteAutoPlayRuleMutation = useMutation({
+    mutationFn: (id: number) => api.sonos.deleteAutoPlayRule(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sonos', 'speakers'] })
-      toast({ message: 'Room favourite saved' })
+      queryClient.invalidateQueries({ queryKey: ['sonos', 'auto-play'] })
+      toast({ message: 'Auto-play rule deleted' })
     },
-    onError: () => toast({ message: 'Failed to save room favourite', type: 'error' }),
+    onError: () => toast({ message: 'Failed to delete rule', type: 'error' }),
+  })
+
+  const toggleAutoPlayRuleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
+      api.sonos.updateAutoPlayRule(id, { enabled: enabled ? 1 : 0 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sonos', 'auto-play'] })
+    },
+    onError: () => toast({ message: 'Failed to update rule', type: 'error' }),
   })
 
   // Mutations
@@ -1276,70 +1317,215 @@ export default function RoomDetailPage() {
                   </p>
                 </div>
 
-                {/* Auto-start music toggle */}
-                <div>
+                {/* Auto-play rules */}
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label
-                      htmlFor="sonos-auto-start-toggle"
-                      className="text-sm font-medium text-heading"
-                    >
-                      Auto-start music
-                    </label>
-                    <Switch.Root
-                      id="sonos-auto-start-toggle"
-                      checked={room.sonos_auto_start}
-                      disabled={updateAutoStartMutation.isPending}
-                      onCheckedChange={(c) => updateAutoStartMutation.mutate(c)}
-                      className={cn(
-                        'relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors',
-                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                        'disabled:cursor-not-allowed disabled:opacity-50',
-                        room.sonos_auto_start ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
-                      )}
-                      aria-describedby="sonos-auto-start-desc"
-                    >
-                      <Switch.Thumb
-                        className={cn(
-                          'block h-5 w-5 rounded-full bg-white shadow transition-transform',
-                          room.sonos_auto_start ? 'translate-x-6' : 'translate-x-1',
-                        )}
-                      />
-                    </Switch.Root>
+                    <p className="text-sm font-medium text-heading">Auto-play rules</p>
+                    {roomAutoPlayRules.length > 0 && (
+                      <span className="rounded-full bg-[var(--bg-tertiary)] px-2 py-0.5 text-xs text-caption">
+                        {roomAutoPlayRules.length}
+                      </span>
+                    )}
                   </div>
-                  <p id="sonos-auto-start-desc" className="mt-1 text-xs text-caption">
-                    Start playing a favourite when you enter this room and nothing else is playing.
-                  </p>
-                </div>
 
-                {/* Room favourite dropdown */}
-                <div>
-                  <label
-                    htmlFor="sonos-room-favourite"
-                    className="mb-1 block text-xs font-medium text-body"
-                  >
-                    Room favourite
-                  </label>
-                  <select
-                    id="sonos-room-favourite"
-                    value={roomSpeaker.favourite ?? ''}
-                    disabled={updateRoomFavouriteMutation.isPending}
-                    onChange={e => {
-                      const val = e.target.value === '' ? null : e.target.value
-                      updateRoomFavouriteMutation.mutate(val)
-                    }}
-                    className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface px-3 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-describedby="sonos-room-favourite-desc"
-                  >
-                    <option value="">(using default)</option>
-                    {sonosFavourites?.map(fav => (
-                      <option key={fav.title} value={fav.title}>
-                        {fav.title}
-                      </option>
-                    ))}
-                  </select>
-                  <p id="sonos-room-favourite-desc" className="mt-1 text-xs text-caption">
-                    Overrides the default favourite for this room.
-                  </p>
+                  {roomAutoPlayRules.length > 0 && (
+                    <ul className="space-y-2" role="list">
+                      {roomAutoPlayRules.map(rule => (
+                        <li
+                          key={rule.id}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-tertiary)] px-3 py-2.5"
+                        >
+                          <p className={cn('text-xs flex-1 min-w-0', rule.enabled ? 'text-body' : 'text-caption line-through')}>
+                            {rule.favourite_name === '__continue__'
+                              ? `Continue what's already playing when mode changes to "${rule.mode_name}"`
+                              : `Play "${rule.favourite_name}" when mode changes to "${rule.mode_name}"`}
+                          </p>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Switch.Root
+                              checked={!!rule.enabled}
+                              onCheckedChange={checked =>
+                                toggleAutoPlayRuleMutation.mutate({ id: rule.id, enabled: checked })
+                              }
+                              disabled={toggleAutoPlayRuleMutation.isPending}
+                              aria-label={`${rule.enabled ? 'Disable' : 'Enable'} rule for ${rule.mode_name}`}
+                              className={cn(
+                                'relative h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors',
+                                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                                'disabled:cursor-not-allowed disabled:opacity-40',
+                                rule.enabled ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
+                              )}
+                            >
+                              <Switch.Thumb
+                                className={cn(
+                                  'block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                                  rule.enabled ? 'translate-x-5' : 'translate-x-1',
+                                )}
+                              />
+                            </Switch.Root>
+                            <button
+                              onClick={() => deleteAutoPlayRuleMutation.mutate(rule.id)}
+                              disabled={deleteAutoPlayRuleMutation.isPending}
+                              aria-label={`Delete rule for ${rule.mode_name}`}
+                              className={cn(
+                                'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg',
+                                'text-caption transition-colors hover:bg-red-500/10 hover:text-red-400',
+                                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500',
+                                'disabled:cursor-not-allowed disabled:opacity-40',
+                              )}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span className="sr-only">Delete rule</span>
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {showAddRuleForm ? (
+                    <div className="rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-tertiary)] p-4 space-y-4">
+                      <p className="text-heading text-sm font-medium">New auto-play rule</p>
+
+                      {/* Room — read-only */}
+                      <div>
+                        <label htmlFor="room-detail-rule-room" className="text-heading text-sm mb-1.5 block">Room</label>
+                        <input id="room-detail-rule-room" type="text" readOnly value={name ?? ''} className="flex min-h-[44px] w-full items-center rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 text-sm text-caption opacity-70" />
+                      </div>
+
+                      {/* Favourite */}
+                      <div>
+                        <label htmlFor="room-detail-rule-favourite" className="text-heading text-sm mb-1.5 block">
+                          Favourite
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="room-detail-rule-favourite"
+                            value={newRuleFavourite}
+                            onChange={e => setNewRuleFavourite(e.target.value)}
+                            className="surface w-full appearance-none rounded-lg border border-[var(--border-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                          >
+                            <option value="">Select a favourite</option>
+                            <option value="__continue__">Continue what's already playing</option>
+                            {sonosFavourites?.map(fav => (
+                              <option key={fav.title} value={fav.title}>{fav.title}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" aria-hidden="true" />
+                        </div>
+                      </div>
+
+                      {/* Mode */}
+                      <div>
+                        <label htmlFor="room-detail-rule-mode" className="text-heading text-sm mb-1.5 block">
+                          Mode
+                        </label>
+                        <div className="relative">
+                          <select
+                            id="room-detail-rule-mode"
+                            value={newRuleMode}
+                            onChange={e => setNewRuleMode(e.target.value)}
+                            className="surface w-full appearance-none rounded-lg border border-[var(--border-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                          >
+                            <option value="">Select a mode</option>
+                            {sonosModes?.map(m => (
+                              <option key={m.name} value={m.name}>{m.name}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" aria-hidden="true" />
+                        </div>
+                      </div>
+
+                      {/* Condition — hidden when __continue__ (only mode_change makes sense) */}
+                      {newRuleFavourite !== '__continue__' && (
+                        <fieldset>
+                          <legend className="text-heading text-sm mb-2">Condition</legend>
+                          <div className="space-y-2">
+                            {(
+                              [
+                                { value: 'mode_change', label: 'Always when mode changes' },
+                                { value: 'if_not_playing', label: 'Only if nothing is playing' },
+                                { value: 'if_source_not', label: 'Only if a source is not active' },
+                              ] as { value: AutoPlayRule['trigger_type']; label: string }[]
+                            ).map(({ value, label }) => (
+                              <label key={value} className="flex items-center gap-2 cursor-pointer min-h-[44px]">
+                                <input
+                                  type="radio"
+                                  name="room-detail-trigger-type"
+                                  value={value}
+                                  checked={newRuleTriggerType === value}
+                                  onChange={() => setNewRuleTriggerType(value)}
+                                  className="h-4 w-4 accent-fairy-500"
+                                />
+                                <span className="text-heading text-sm">{label}</span>
+                              </label>
+                            ))}
+                          </div>
+                          {newRuleTriggerType === 'if_source_not' && (
+                            <div className="mt-3">
+                              <label htmlFor="room-detail-rule-source" className="text-caption text-xs mb-1.5 block">
+                                Source name
+                              </label>
+                              <input
+                                id="room-detail-rule-source"
+                                type="text"
+                                value={newRuleSourceValue}
+                                onChange={e => setNewRuleSourceValue(e.target.value)}
+                                placeholder="e.g. Spotify"
+                                className="w-full rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                              />
+                            </div>
+                          )}
+                        </fieldset>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            if (!newRuleFavourite || !newRuleMode) return
+                            const effectiveTrigger = newRuleFavourite === '__continue__' ? 'mode_change' : newRuleTriggerType
+                            createAutoPlayRuleMutation.mutate({
+                              room_name: name ?? null,
+                              mode_name: newRuleMode,
+                              favourite_name: newRuleFavourite,
+                              trigger_type: effectiveTrigger,
+                              trigger_value: effectiveTrigger === 'if_source_not' ? newRuleSourceValue : null,
+                              enabled: 1,
+                            })
+                          }}
+                          disabled={!newRuleFavourite || !newRuleMode || (newRuleTriggerType === 'if_source_not' && newRuleFavourite !== '__continue__' && !newRuleSourceValue) || createAutoPlayRuleMutation.isPending}
+                          className="rounded-lg px-4 py-2 min-h-[44px] bg-fairy-500 text-white text-sm font-medium hover:bg-fairy-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                        >
+                          {createAutoPlayRuleMutation.isPending ? 'Saving...' : 'Save rule'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowAddRuleForm(false)
+                            setNewRuleFavourite('')
+                            setNewRuleMode('')
+                            setNewRuleTriggerType('mode_change')
+                            setNewRuleSourceValue('')
+                          }}
+                          className="rounded-lg px-4 py-2 min-h-[44px] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-heading text-sm hover:bg-[var(--bg-tertiary)] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowAddRuleForm(true)}
+                      className="rounded-lg px-4 py-2 min-h-[44px] bg-fairy-500 text-white text-sm font-medium hover:bg-fairy-600 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                    >
+                      Add auto-play rule
+                    </button>
+                  )}
+
+                  {roomAutoPlayRules.length === 0 && !showAddRuleForm && (
+                    <p className="text-xs text-caption">
+                      No auto-play rules for this room yet. Add a rule to automatically start music when a mode activates.
+                    </p>
+                  )}
                 </div>
 
                 {/* Now playing indicator — shown when speaker is in follow-me group */}

@@ -314,3 +314,21 @@
 - **Branch cleanup**: done
 - **Summary**: Fixed deactivate button contrast to use theme-aware CSS variables for WCAG AA compliance
 - **Files**: `client/src/pages/DeviceDetailPage.tsx`, `client/src/pages/LightDetailPage.tsx`
+
+## PR #38 — Fix remaining audit issues and decompose SettingsPage
+- **Branch**: fix/remaining-audit-issues → dev
+- **Created**: 2026-03-26
+- **Status**: merged
+- **Merge date**: 2026-03-26
+- **Branch cleanup**: done
+- **Summary**: Webhook token from header not query param, 3 error message leaks fixed, 5 dead migration functions removed, deploy set -e for local shell, socket HMR dispose hook, SettingsPage decomposed from 2173 to 536 lines (7 extracted components)
+- **Files**: `server/src/index.ts`, `server/src/routes/kasa.ts`, `server/src/routes/lifx.ts`, `server/src/db/index.ts`, `deploy-to-pi.sh`, `server/.env.example`, `client/src/hooks/useSocket.ts`, `client/src/pages/SettingsPage.tsx`, `client/src/components/settings/*` (7 new files)
+
+## PR #39 — Add Sonos integration: follow-me music and auto-play rules
+- **Branch**: feature/sonos-integration → dev
+- **Created**: 2026-03-26
+- **Status**: merged
+- **Merge date**: 2026-03-26
+- **Branch cleanup**: done
+- **Summary**: Follow-me music (motion-driven speaker grouping), auto-play rules (favourites on mode change), line-in detection, locked state integration. Backend: sonos-client, sonos-manager, sonos routes, DB schema, motion/scheduler hooks. Frontend: SonosSetupPage, SonosDetailPage, MusicSection settings, Sonos tab on Devices, per-room controls on RoomDetail. PM2 + deploy config. Bug fixes: motion hook placement, webhook auth query param, auto-play validation.
+- **Files**: 25 files changed (+3,205/-14)
