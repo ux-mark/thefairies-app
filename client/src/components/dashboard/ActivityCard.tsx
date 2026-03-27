@@ -1,24 +1,39 @@
+import { useState, useMemo } from 'react'
 import {
   Chart,
   BarElement,
   CategoryScale,
   LinearScale,
+  LineElement,
+  PointElement,
+  Filler,
   Tooltip,
+  Legend,
 } from 'chart.js'
-import { Bar } from 'react-chartjs-2'
+import { Bar, Line } from 'react-chartjs-2'
 import type { ChartOptions, ChartData } from 'chart.js'
 import { Activity } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ActivityInsights } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
-Chart.register(BarElement, CategoryScale, LinearScale, Tooltip)
+Chart.register(BarElement, CategoryScale, LinearScale, LineElement, PointElement, Filler, Tooltip, Legend)
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GRID_COLOR = 'rgba(148, 163, 184, 0.15)'
 const TICK_COLOR = 'rgb(148, 163, 184)'
-const BAR_COLOR = '#10b981' // fairy-500
-const BAR_BG = 'rgba(16, 185, 129, 0.7)'
+
+const ROOM_PALETTE = [
+  '#10b981', // green
+  '#3b82f6', // blue
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+]
 
 const TOOLTIP_STYLE = {
   backgroundColor: 'rgba(15, 23, 42, 0.92)' as const,
@@ -29,13 +44,64 @@ const TOOLTIP_STYLE = {
   padding: 10,
 }
 
+function getRoomColor(index: number): string {
+  return ROOM_PALETTE[index % ROOM_PALETTE.length]
+}
+
+// ── Room toggle pills ─────────────────────────────────────────────────────────
+
+interface RoomToggleProps {
+  rooms: string[]
+  activeRooms: Set<string>
+  onToggle: (room: string) => void
+}
+
+function RoomToggles({ rooms, activeRooms, onToggle }: RoomToggleProps) {
+  return (
+    <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Filter by room">
+      {rooms.map((room, i) => {
+        const active = activeRooms.has(room)
+        const color = getRoomColor(i)
+        return (
+          <button
+            key={room}
+            type="button"
+            onClick={() => onToggle(room)}
+            className={cn(
+              'rounded-full px-2.5 py-1 text-xs font-medium transition-all min-h-[32px]',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+              active
+                ? 'text-white shadow-sm'
+                : 'bg-slate-800/50 text-slate-500',
+            )}
+            style={active ? { backgroundColor: color } : undefined}
+            aria-pressed={active}
+          >
+            {room}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Room activity horizontal bar chart ────────────────────────────────────────
 
-function RoomActivityChart({ ranking }: { ranking: ActivityInsights['roomRanking'] }) {
-  if (ranking.length === 0) return null
+function RoomActivityChart({
+  ranking,
+  activeRooms,
+  roomIndexMap,
+}: {
+  ranking: ActivityInsights['roomRanking']
+  activeRooms: Set<string>
+  roomIndexMap: Map<string, number>
+}) {
+  const filtered = ranking.filter((r) => activeRooms.has(r.room))
+  if (filtered.length === 0) return null
 
-  const labels = ranking.map((r) => r.room)
-  const values = ranking.map((r) => r.events24h)
+  const labels = filtered.map((r) => r.room)
+  const values = filtered.map((r) => r.events24h)
+  const colors = filtered.map((r) => getRoomColor(roomIndexMap.get(r.room) ?? 0))
 
   const chartData: ChartData<'bar'> = {
     labels,
@@ -43,8 +109,8 @@ function RoomActivityChart({ ranking }: { ranking: ActivityInsights['roomRanking
       {
         label: 'Events today',
         data: values,
-        backgroundColor: BAR_BG,
-        borderColor: BAR_COLOR,
+        backgroundColor: colors.map((c) => c + 'b3'), // 70% opacity
+        borderColor: colors,
         borderWidth: 1,
         borderRadius: 4,
       },
@@ -85,16 +151,12 @@ function RoomActivityChart({ ranking }: { ranking: ActivityInsights['roomRanking
       y: {
         border: { display: false },
         grid: { display: false },
-        ticks: {
-          color: TICK_COLOR,
-          font: { size: 11 },
-        },
+        ticks: { color: TICK_COLOR, font: { size: 11 } },
       },
     },
   }
 
-  // Scale height based on number of rooms (28px per room, min 120)
-  const height = Math.max(120, ranking.length * 28)
+  const height = Math.max(120, filtered.length * 28)
 
   return (
     <div style={{ height }} aria-label="Room activity ranking chart">
@@ -103,36 +165,49 @@ function RoomActivityChart({ ranking }: { ranking: ActivityInsights['roomRanking
   )
 }
 
-// ── Hourly pattern bar chart ──────────────────────────────────────────────────
+// ── Hourly pattern area chart (multi-room lines) ─────────────────────────────
 
-function HourlyPatternChart({ pattern }: { pattern: ActivityInsights['hourlyPattern'] }) {
-  if (pattern.length === 0) return null
+function HourlyPatternChart({
+  hourlyByRoom,
+  activeRooms,
+  roomIndexMap,
+}: {
+  hourlyByRoom: ActivityInsights['hourlyByRoom']
+  activeRooms: Set<string>
+  roomIndexMap: Map<string, number>
+}) {
+  const filtered = hourlyByRoom.filter((r) => activeRooms.has(r.room))
+  if (filtered.length === 0) return null
 
-  const labels = pattern.map((p) => {
-    if (p.hour === 0) return '12am'
-    if (p.hour === 12) return '12pm'
-    return p.hour < 12 ? `${p.hour}am` : `${p.hour - 12}pm`
+  const labels = Array.from({ length: 24 }, (_, h) => {
+    if (h === 0) return '12am'
+    if (h === 12) return '12pm'
+    return h < 12 ? `${h}am` : `${h - 12}pm`
   })
-  const values = pattern.map((p) => p.avgEvents)
 
-  const chartData: ChartData<'bar'> = {
+  const chartData: ChartData<'line'> = {
     labels,
-    datasets: [
-      {
-        label: 'Avg events',
-        data: values,
-        backgroundColor: BAR_BG,
-        borderColor: BAR_COLOR,
-        borderWidth: 1,
-        borderRadius: 2,
-      },
-    ],
+    datasets: filtered.map((room) => {
+      const color = getRoomColor(roomIndexMap.get(room.room) ?? 0)
+      return {
+        label: room.room,
+        data: room.data.map((d) => d.avgEvents),
+        borderColor: color,
+        backgroundColor: color + '20', // 12% opacity fill
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.3,
+        fill: true,
+      }
+    }),
   }
 
-  const options: ChartOptions<'bar'> = {
+  const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -140,16 +215,14 @@ function HourlyPatternChart({ pattern }: { pattern: ActivityInsights['hourlyPatt
         callbacks: {
           title(items) {
             const idx = items[0]?.dataIndex ?? 0
-            const hour = idx
-            const h = hour % 12 || 12
-            const suffix = hour < 12 ? 'am' : 'pm'
-            const nh = (hour + 1) % 12 || 12
-            const ns = (hour + 1) < 12 || (hour + 1) === 24 ? 'am' : 'pm'
+            const h = idx % 12 || 12
+            const suffix = idx < 12 ? 'am' : 'pm'
+            const nh = (idx + 1) % 12 || 12
+            const ns = (idx + 1) < 12 || (idx + 1) === 24 ? 'am' : 'pm'
             return `${h}${suffix}\u2013${nh}${ns}`
           },
           label(ctx) {
-            const val = ctx.parsed.y
-            return `${val} avg event${val !== 1 ? 's' : ''}`
+            return `${ctx.dataset.label}: ${ctx.parsed.y} avg events`
           },
         },
       },
@@ -163,7 +236,6 @@ function HourlyPatternChart({ pattern }: { pattern: ActivityInsights['hourlyPatt
           font: { size: 10 },
           maxRotation: 0,
           callback(_value, index) {
-            // Show every 3rd label to avoid crowding
             return index % 3 === 0 ? labels[index] : ''
           },
         },
@@ -185,57 +257,68 @@ function HourlyPatternChart({ pattern }: { pattern: ActivityInsights['hourlyPatt
   }
 
   return (
-    <div style={{ height: 140 }} aria-label="Hourly activity pattern chart">
-      <Bar data={chartData} options={options} />
+    <div style={{ height: 160 }} aria-label="Hourly activity pattern by room">
+      <Line data={chartData} options={options} />
     </div>
   )
 }
 
-// ── Daily trend bar chart ─────────────────────────────────────────────────────
+// ── Daily trend stacked bar chart ─────────────────────────────────────────────
 
-function DailyTrendChart({ trend }: { trend: ActivityInsights['dailyTrend'] }) {
-  if (trend.length === 0) return null
+function DailyTrendChart({
+  dailyByRoom,
+  activeRooms,
+  roomIndexMap,
+}: {
+  dailyByRoom: ActivityInsights['dailyByRoom']
+  activeRooms: Set<string>
+  roomIndexMap: Map<string, number>
+}) {
+  const filtered = dailyByRoom.filter((r) => activeRooms.has(r.room))
+  if (filtered.length === 0 || filtered[0].data.length === 0) return null
 
-  const labels = trend.map((d) => d.day)
-  const values = trend.map((d) => d.totalEvents)
+  const labels = filtered[0].data.map((d) => d.day)
 
   const chartData: ChartData<'bar'> = {
     labels,
-    datasets: [
-      {
-        label: 'Events',
-        data: values,
-        backgroundColor: BAR_BG,
-        borderColor: BAR_COLOR,
+    datasets: filtered.map((room) => {
+      const color = getRoomColor(roomIndexMap.get(room.room) ?? 0)
+      return {
+        label: room.room,
+        data: room.data.map((d) => d.totalEvents),
+        backgroundColor: color + 'b3',
+        borderColor: color,
         borderWidth: 1,
-        borderRadius: 4,
-      },
-    ],
+        borderRadius: 2,
+      }
+    }),
   }
 
   const options: ChartOptions<'bar'> = {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { display: false },
       tooltip: {
         ...TOOLTIP_STYLE,
         callbacks: {
           label(ctx) {
-            const val = ctx.parsed.y
-            return `${val} event${val !== 1 ? 's' : ''}`
+            return `${ctx.dataset.label}: ${ctx.parsed.y} events`
           },
         },
       },
     },
     scales: {
       x: {
+        stacked: true,
         border: { display: false },
         grid: { color: GRID_COLOR },
         ticks: { color: TICK_COLOR, font: { size: 11 } },
       },
       y: {
+        stacked: true,
         border: { display: false },
         grid: { color: GRID_COLOR },
         ticks: {
@@ -252,7 +335,7 @@ function DailyTrendChart({ trend }: { trend: ActivityInsights['dailyTrend'] }) {
   }
 
   return (
-    <div style={{ height: 120 }} aria-label="Daily activity trend bar chart">
+    <div style={{ height: 140 }} aria-label="Daily activity trend by room">
       <Bar data={chartData} options={options} />
     </div>
   )
@@ -265,6 +348,39 @@ interface ActivityCardProps {
 }
 
 export default function ActivityCard({ activity }: ActivityCardProps) {
+  const allRooms = useMemo(
+    () => activity?.roomRanking.map((r) => r.room) ?? [],
+    [activity],
+  )
+  const [activeRooms, setActiveRooms] = useState<Set<string>>(() => new Set(allRooms))
+
+  // Keep active rooms in sync when data changes
+  const roomIndexMap = useMemo(() => {
+    const map = new Map<string, number>()
+    allRooms.forEach((r, i) => map.set(r, i))
+    return map
+  }, [allRooms])
+
+  // If allRooms changed (e.g., on first load), ensure activeRooms matches
+  useMemo(() => {
+    if (allRooms.length > 0 && activeRooms.size === 0) {
+      setActiveRooms(new Set(allRooms))
+    }
+  }, [allRooms, activeRooms.size])
+
+  function toggleRoom(room: string) {
+    setActiveRooms((prev) => {
+      const next = new Set(prev)
+      if (next.has(room)) {
+        // Don't allow deselecting all rooms
+        if (next.size > 1) next.delete(room)
+      } else {
+        next.add(room)
+      }
+      return next
+    })
+  }
+
   if (!activity) {
     return (
       <section
@@ -290,8 +406,10 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
     )
   }
 
-  const { roomRanking, dailyTrend, hourlyPattern, mostActiveRoom, quietestRoom } = activity
-  const totalEvents = roomRanking.reduce((sum, r) => sum + r.events24h, 0)
+  const { roomRanking, hourlyByRoom, dailyByRoom, mostActiveRoom, quietestRoom } = activity
+  const activeCount = roomRanking
+    .filter((r) => activeRooms.has(r.room))
+    .reduce((sum, r) => sum + r.events24h, 0)
 
   return (
     <section
@@ -306,10 +424,12 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
       </header>
 
       {/* Headline */}
-      <div className="mb-5 space-y-1">
+      <div className="mb-4 space-y-1">
         <p className="text-body text-sm">
-          {totalEvents.toLocaleString()} motion event{totalEvents !== 1 ? 's' : ''} today across{' '}
-          {roomRanking.length} room{roomRanking.length !== 1 ? 's' : ''}
+          {activeCount.toLocaleString()} motion event{activeCount !== 1 ? 's' : ''} today
+          {activeRooms.size < allRooms.length && (
+            <span className="text-caption"> ({activeRooms.size} of {allRooms.length} rooms)</span>
+          )}
         </p>
         {mostActiveRoom && (
           <p className="text-sm font-medium text-heading">
@@ -320,7 +440,7 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
             >
               {mostActiveRoom.room}
             </Link>
-            {' '}({mostActiveRoom.events24h} events)
+            {' '}({mostActiveRoom.events24h})
             {quietestRoom && (
               <span className="text-caption text-xs font-normal">
                 {' '} / Quietest:{' '}
@@ -337,27 +457,30 @@ export default function ActivityCard({ activity }: ActivityCardProps) {
         )}
       </div>
 
-      {/* Room activity chart (horizontal bars) */}
+      {/* Room toggle pills */}
+      <RoomToggles rooms={allRooms} activeRooms={activeRooms} onToggle={toggleRoom} />
+
+      {/* Room activity chart (horizontal bars, coloured per room) */}
       {roomRanking.length > 0 && (
         <div className="mb-5">
           <h3 className="text-caption mb-2 text-xs font-medium">Events by room today</h3>
-          <RoomActivityChart ranking={roomRanking} />
+          <RoomActivityChart ranking={roomRanking} activeRooms={activeRooms} roomIndexMap={roomIndexMap} />
         </div>
       )}
 
-      {/* Hourly pattern */}
-      {hourlyPattern.length > 0 && (
+      {/* Hourly pattern (multi-room area/line chart) */}
+      {hourlyByRoom.length > 0 && (
         <div className="mb-5 border-t pt-4" style={{ borderColor: 'var(--border-primary)' }}>
           <h3 className="text-caption mb-2 text-xs font-medium">Typical hourly pattern (7-day average)</h3>
-          <HourlyPatternChart pattern={hourlyPattern} />
+          <HourlyPatternChart hourlyByRoom={hourlyByRoom} activeRooms={activeRooms} roomIndexMap={roomIndexMap} />
         </div>
       )}
 
-      {/* Daily trend */}
-      {dailyTrend.length > 0 && (
+      {/* Daily trend (stacked bar chart, coloured per room) */}
+      {dailyByRoom.length > 0 && (
         <div className="border-t pt-4" style={{ borderColor: 'var(--border-primary)' }}>
           <h3 className="text-caption mb-2 text-xs font-medium">7-day activity trend</h3>
-          <DailyTrendChart trend={dailyTrend} />
+          <DailyTrendChart dailyByRoom={dailyByRoom} activeRooms={activeRooms} roomIndexMap={roomIndexMap} />
         </div>
       )}
     </section>

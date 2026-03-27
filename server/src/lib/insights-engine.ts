@@ -112,6 +112,8 @@ export interface ActivityInsights {
   roomRanking: Array<{ room: string; events24h: number; peakHours: string }>
   dailyTrend: Array<{ day: string; totalEvents: number }>
   hourlyPattern: Array<{ hour: number; avgEvents: number }>
+  hourlyByRoom: Array<{ room: string; data: Array<{ hour: number; avgEvents: number }> }>
+  dailyByRoom: Array<{ room: string; data: Array<{ day: string; totalEvents: number }> }>
   mostActiveRoom: { room: string; events24h: number } | null
   quietestRoom: { room: string; events24h: number } | null
 }
@@ -825,6 +827,61 @@ function computeActivityInsights(): ActivityInsights | null {
     avgEvents: Math.round((hourlyMap.get(h) ?? 0) / daysOfData),
   }))
 
+  // Per-room hourly breakdown (reuse peakRows which has room_name + hour + count)
+  const roomNames = roomRows.map((r) => r.room_name)
+  const hourlyByRoomMap = new Map<string, Map<number, number>>()
+  for (const row of peakRows) {
+    let roomMap = hourlyByRoomMap.get(row.room_name)
+    if (!roomMap) {
+      roomMap = new Map()
+      hourlyByRoomMap.set(row.room_name, roomMap)
+    }
+    roomMap.set(row.hour, row.count)
+  }
+  const hourlyByRoom = roomNames.map((room) => {
+    const roomMap = hourlyByRoomMap.get(room) ?? new Map()
+    return {
+      room,
+      data: Array.from({ length: 24 }, (_, h) => ({
+        hour: h,
+        avgEvents: Math.round((roomMap.get(h) ?? 0) / daysOfData),
+      })),
+    }
+  })
+
+  // Per-room daily breakdown
+  const dailyByRoomRows = getAll<{ room_name: string; day: string; total_events: number }>(
+    `SELECT room_name, date(recorded_at, 'localtime') as day, COUNT(*) as total_events
+     FROM room_activity
+     WHERE event_type = 'motion_active'
+       AND recorded_at > datetime('now', '-7 days')
+     GROUP BY room_name, date(recorded_at, 'localtime')
+     ORDER BY room_name, day`,
+    [],
+  )
+  // Get the set of all days from the house-wide trend
+  const allDays = dailyTrend.map((d) => d.day)
+  const allDayDates = trendRows.map((r) => r.day)
+  const dailyByRoomMap = new Map<string, Map<string, number>>()
+  for (const row of dailyByRoomRows) {
+    let roomMap = dailyByRoomMap.get(row.room_name)
+    if (!roomMap) {
+      roomMap = new Map()
+      dailyByRoomMap.set(row.room_name, roomMap)
+    }
+    roomMap.set(row.day, row.total_events)
+  }
+  const dailyByRoom = roomNames.map((room) => {
+    const roomMap = dailyByRoomMap.get(room) ?? new Map()
+    return {
+      room,
+      data: allDayDates.map((dateStr, i) => ({
+        day: allDays[i],
+        totalEvents: roomMap.get(dateStr) ?? 0,
+      })),
+    }
+  })
+
   // Most active / quietest
   const mostActiveRoom = { room: roomRanking[0].room, events24h: roomRanking[0].events24h }
   const quietestRoom =
@@ -835,7 +892,7 @@ function computeActivityInsights(): ActivityInsights | null {
         }
       : null
 
-  return { roomRanking, dailyTrend, hourlyPattern, mostActiveRoom, quietestRoom }
+  return { roomRanking, dailyTrend, hourlyPattern, hourlyByRoom, dailyByRoom, mostActiveRoom, quietestRoom }
 }
 
 // ── Device label resolver (fallback for notifications with null source_label) ─
