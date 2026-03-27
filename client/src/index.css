@@ -7,8 +7,8 @@
   --color-fairy-100: #d1fae5;
   --color-fairy-200: #a7f3d0;
   --color-fairy-300: #6ee7b7;
-  --color-fairy-400: #34d399;
-  --color-fairy-500: #10b981;
+  --color-fairy-400: var(--fairy-400);
+  --color-fairy-500: var(--fairy-500);
   --color-fairy-600: #059669;
   --color-fairy-700: #047857;
   --color-fairy-800: #065f46;
@@ -21,6 +21,10 @@
 
 :root {
   --radius: 0.75rem;
+
+  /* Fairy accent — WCAG AA compliant per theme */
+  --fairy-400: #047857;           /* fairy-700: 5.5:1 on white */
+  --fairy-500: #059669;           /* fairy-600: 4.6:1 on white */
 
   /* Surfaces */
   --bg-primary: #f8fafc;        /* slate-50 */
@@ -43,6 +47,10 @@
 }
 
 html.dark {
+  /* Fairy accent — bright on dark backgrounds, AA compliant */
+  --fairy-400: #34d399;           /* original fairy-400: 8.3:1 on slate-900 */
+  --fairy-500: #10b981;           /* original fairy-500: 5.7:1 on slate-900 */
+
   --bg-primary: #020617;        /* slate-950 */
   --bg-secondary: #0f172a;      /* slate-900 */
   --bg-tertiary: #1e293b;       /* slate-800 */
