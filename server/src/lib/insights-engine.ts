@@ -1,5 +1,6 @@
 import { getAll, getOne, db } from '../db/index.js'
 import { notificationService } from './notification-service.js'
+import { kasaClient } from './kasa-client.js'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,27 @@ export interface EnergyInsights {
   totalWatts: number
   averageWattsThisHour: number | null
   overUnderPercent: number | null
+  /** @deprecated Use projectedDailyCost. Kept for backwards compatibility. */
   dailyCostEstimate: number | null
+  projectedDailyCost: number | null
+  actualDailyCost: number | null
+  monthToDateCost: number | null
+  lastMonthCost: number | null
+  monthOverMonthPercent: number | null
+  dailyOverUnderPercent: number | null
+  deviceCostRanking: Array<{
+    deviceId: string
+    label: string
+    monthlyKwh: number
+    monthlyCost: number
+    dailyAvgCost: number
+  }>
+  roomCostRanking: Array<{
+    roomName: string
+    dailyCost: number
+    monthToDateCost: number
+    deviceCount: number
+  }>
   energyRate: number
   dailyKwhHistory: Array<{ day: string; totalKwh: number }>
   peakHours: Array<{ hour: number; avgWatts: number }>
@@ -125,9 +146,43 @@ function hasHistoryData(source: string, minRows = 3): boolean {
   return result.count >= minRows
 }
 
+// ── Kasa emeter device helpers ───────────────────────────────────────────────
+
+interface EmeterDevice {
+  id: string
+  label: string
+}
+
+/** Fetch daily Wh stats for a single device; returns null on failure. */
+async function fetchDailyStats(
+  device: EmeterDevice,
+  year: number,
+  month: number,
+): Promise<{ deviceId: string; label: string; data: Record<number, number> } | null> {
+  try {
+    const stats = await kasaClient.getDailyStats(device.id, year, month)
+    return { deviceId: device.id, label: device.label, data: stats.data }
+  } catch {
+    return null
+  }
+}
+
+/** Fetch monthly Wh stats for a single device; returns null on failure. */
+async function fetchMonthlyStats(
+  device: EmeterDevice,
+  year: number,
+): Promise<{ deviceId: string; label: string; data: Record<number, number> } | null> {
+  try {
+    const stats = await kasaClient.getMonthlyStats(device.id, year)
+    return { deviceId: device.id, label: device.label, data: stats.data }
+  } catch {
+    return null
+  }
+}
+
 // ── Energy insights ─────────────────────────────────────────────────────────
 
-function computeEnergyInsights(power: PowerDevice[], energyRate: number): EnergyInsights | null {
+async function computeEnergyInsights(power: PowerDevice[], energyRate: number): Promise<EnergyInsights | null> {
   if (power.length === 0) return null
 
   const totalWatts = power.reduce((sum, d) => sum + d.power, 0)
@@ -214,6 +269,215 @@ function computeEnergyInsights(power: PowerDevice[], energyRate: number): Energy
      ORDER BY avg_watts DESC LIMIT 3`,
   ).map((r) => ({ hour: r.hour, avgWatts: Math.round(r.avg_watts * 10) / 10 }))
 
+  // ── Cost intelligence from Kasa hardware memory ──────────────────────────
+
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1 // 1-indexed
+  const currentDay = now.getDate()
+  const daysInCurrentMonth = new Date(currentYear, currentMonth, 0).getDate()
+
+  // Emeter-capable devices
+  const emeterDevices = getAll<EmeterDevice>(
+    `SELECT id, label FROM kasa_devices WHERE has_emeter = 1`,
+  )
+
+  // Room mappings for room cost aggregation
+  const roomMappings = db.prepare(`
+    SELECT dr.device_id, dr.room_name, kd.label
+    FROM device_rooms dr
+    JOIN kasa_devices kd ON dr.device_id = kd.id
+    WHERE dr.device_type LIKE 'kasa_%' AND kd.has_emeter = 1
+  `).all() as Array<{ device_id: string; room_name: string; label: string }>
+
+  let actualDailyCost: number | null = null
+  const projectedDailyCost = dailyCostEstimate
+  let monthToDateCost: number | null = null
+  let lastMonthCost: number | null = null
+  let monthOverMonthPercent: number | null = null
+  let dailyOverUnderPercent: number | null = null
+  const deviceCostRanking: EnergyInsights['deviceCostRanking'] = []
+  const roomCostRanking: EnergyInsights['roomCostRanking'] = []
+
+  if (emeterDevices.length > 0 && energyRate > 0) {
+    // Fetch daily stats (today) in parallel — for actualDailyCost and dailyOverUnderPercent
+    const dailyResults = await Promise.allSettled(
+      emeterDevices.map((d) => fetchDailyStats(d, currentYear, currentMonth)),
+    )
+
+    // Determine the day-of-month for "same day last week" (may cross into prior month)
+    const lastWeekDate = new Date(now)
+    lastWeekDate.setDate(currentDay - 7)
+    const lastWeekYear = lastWeekDate.getFullYear()
+    const lastWeekMonth = lastWeekDate.getMonth() + 1
+    const lastWeekDay = lastWeekDate.getDate()
+
+    // Fetch last week's daily stats if they fall in a different month
+    let lastWeekResults: PromiseSettledResult<{ deviceId: string; label: string; data: Record<number, number> } | null>[] | null = null
+    if (lastWeekMonth !== currentMonth || lastWeekYear !== currentYear) {
+      lastWeekResults = await Promise.allSettled(
+        emeterDevices.map((d) => fetchDailyStats(d, lastWeekYear, lastWeekMonth)),
+      )
+    }
+
+    let totalTodayWh = 0
+    let totalLastWeekDayWh = 0
+    let hasTodayData = false
+    let hasLastWeekData = false
+
+    for (let i = 0; i < dailyResults.length; i++) {
+      const result = dailyResults[i]
+      if (result.status !== 'fulfilled' || result.value === null) continue
+      const { data } = result.value
+
+      const todayWh = data[currentDay] ?? 0
+      totalTodayWh += todayWh
+      hasTodayData = true
+
+      // Same-day last week — may come from different month fetch
+      if (lastWeekMonth === currentMonth && lastWeekYear === currentYear) {
+        // Same month: use same daily stats result
+        const lastWeekWh = data[lastWeekDay] ?? 0
+        totalLastWeekDayWh += lastWeekWh
+        if (lastWeekWh > 0) hasLastWeekData = true
+      } else if (lastWeekResults) {
+        const lwResult = lastWeekResults[i]
+        if (lwResult.status === 'fulfilled' && lwResult.value !== null) {
+          const lwWh = lwResult.value.data[lastWeekDay] ?? 0
+          totalLastWeekDayWh += lwWh
+          if (lwWh > 0) hasLastWeekData = true
+        }
+      }
+    }
+
+    if (hasTodayData) {
+      actualDailyCost = Math.round((totalTodayWh / 1000) * energyRate * 100) / 100
+    }
+
+    if (hasTodayData && hasLastWeekData && totalLastWeekDayWh > 0) {
+      dailyOverUnderPercent = Math.round(
+        ((totalTodayWh - totalLastWeekDayWh) / totalLastWeekDayWh) * 100,
+      )
+    }
+
+    // Fetch monthly stats in parallel — for monthToDateCost, lastMonthCost, device ranking
+    const monthlyResults = await Promise.allSettled(
+      emeterDevices.map((d) => fetchMonthlyStats(d, currentYear)),
+    )
+
+    // Determine previous month
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1
+    const prevMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear
+
+    // If previous month is in a prior year we need a separate fetch
+    let prevYearMonthlyResults: PromiseSettledResult<{ deviceId: string; label: string; data: Record<number, number> } | null>[] | null = null
+    if (prevMonthYear !== currentYear) {
+      prevYearMonthlyResults = await Promise.allSettled(
+        emeterDevices.map((d) => fetchMonthlyStats(d, prevMonthYear)),
+      )
+    }
+
+    let totalCurrentMonthWh = 0
+    let totalPrevMonthWh = 0
+    let hasCurrentMonthData = false
+    let hasPrevMonthData = false
+
+    const deviceMonthlyKwh = new Map<string, { label: string; kwh: number }>()
+
+    for (let i = 0; i < monthlyResults.length; i++) {
+      const result = monthlyResults[i]
+      if (result.status !== 'fulfilled' || result.value === null) continue
+      const { deviceId, label, data } = result.value
+
+      const currentMonthWh = data[currentMonth] ?? 0
+      totalCurrentMonthWh += currentMonthWh
+      hasCurrentMonthData = true
+
+      deviceMonthlyKwh.set(deviceId, { label, kwh: (deviceMonthlyKwh.get(deviceId)?.kwh ?? 0) + currentMonthWh / 1000 })
+
+      // Previous month from same yearly result (if prev month is in current year)
+      if (prevMonthYear === currentYear) {
+        const prevMonthWh = data[prevMonth] ?? 0
+        totalPrevMonthWh += prevMonthWh
+        if (prevMonthWh > 0) hasPrevMonthData = true
+      } else if (prevYearMonthlyResults) {
+        const pvResult = prevYearMonthlyResults[i]
+        if (pvResult.status === 'fulfilled' && pvResult.value !== null) {
+          const pvWh = pvResult.value.data[prevMonth] ?? 0
+          totalPrevMonthWh += pvWh
+          if (pvWh > 0) hasPrevMonthData = true
+        }
+      }
+    }
+
+    if (hasCurrentMonthData) {
+      monthToDateCost = Math.round((totalCurrentMonthWh / 1000) * energyRate * 100) / 100
+    }
+
+    if (hasPrevMonthData) {
+      lastMonthCost = Math.round((totalPrevMonthWh / 1000) * energyRate * 100) / 100
+    }
+
+    // Month-over-month: project current month to full month, compare to last month
+    if (hasCurrentMonthData && hasPrevMonthData && totalPrevMonthWh > 0 && currentDay > 0) {
+      const projectedCurrentMonthWh = (totalCurrentMonthWh / currentDay) * daysInCurrentMonth
+      monthOverMonthPercent = Math.round(
+        ((projectedCurrentMonthWh - totalPrevMonthWh) / totalPrevMonthWh) * 100,
+      )
+    }
+
+    // Per-device cost ranking
+    for (const [deviceId, { label, kwh }] of deviceMonthlyKwh.entries()) {
+      const monthlyCost = Math.round(kwh * energyRate * 100) / 100
+      const daysInMonth = daysInCurrentMonth
+      deviceCostRanking.push({
+        deviceId,
+        label,
+        monthlyKwh: Math.round(kwh * 1000) / 1000,
+        monthlyCost,
+        dailyAvgCost: Math.round((monthlyCost / daysInMonth) * 1000) / 1000,
+      })
+    }
+    deviceCostRanking.sort((a, b) => b.monthlyCost - a.monthlyCost)
+
+    // Per-room cost aggregation
+    const roomMap = new Map<string, { dailyCost: number; monthToDateCost: number; deviceCount: number; deviceIds: Set<string> }>()
+
+    for (const mapping of roomMappings) {
+      if (!roomMap.has(mapping.room_name)) {
+        roomMap.set(mapping.room_name, { dailyCost: 0, monthToDateCost: 0, deviceCount: 0, deviceIds: new Set() })
+      }
+      const room = roomMap.get(mapping.room_name)!
+      if (!room.deviceIds.has(mapping.device_id)) {
+        room.deviceIds.add(mapping.device_id)
+        room.deviceCount++
+
+        // Find this device's costs from previously computed data
+        const deviceDailyIdx = emeterDevices.findIndex((d) => d.id === mapping.device_id)
+        if (deviceDailyIdx >= 0) {
+          const dailyResult = dailyResults[deviceDailyIdx]
+          if (dailyResult.status === 'fulfilled' && dailyResult.value !== null) {
+            const todayWh = dailyResult.value.data[currentDay] ?? 0
+            room.dailyCost += (todayWh / 1000) * energyRate
+          }
+
+          const deviceKwh = deviceMonthlyKwh.get(mapping.device_id)?.kwh ?? 0
+          room.monthToDateCost += deviceKwh * energyRate
+        }
+      }
+    }
+
+    for (const [roomName, data] of roomMap.entries()) {
+      roomCostRanking.push({
+        roomName,
+        dailyCost: Math.round(data.dailyCost * 100) / 100,
+        monthToDateCost: Math.round(data.monthToDateCost * 100) / 100,
+        deviceCount: data.deviceCount,
+      })
+    }
+    roomCostRanking.sort((a, b) => b.monthToDateCost - a.monthToDateCost)
+  }
+
   return {
     totalWatts,
     averageWattsThisHour:
@@ -222,6 +486,14 @@ function computeEnergyInsights(power: PowerDevice[], energyRate: number): Energy
         : null,
     overUnderPercent,
     dailyCostEstimate,
+    projectedDailyCost,
+    actualDailyCost,
+    monthToDateCost,
+    lastMonthCost,
+    monthOverMonthPercent,
+    dailyOverUnderPercent,
+    deviceCostRanking,
+    roomCostRanking,
     energyRate,
     dailyKwhHistory,
     peakHours,
@@ -703,13 +975,18 @@ export function invalidateInsightsCache(): void {
   cacheTimestamp = 0
 }
 
-export function computeInsights(state: CurrentState): InsightsData {
+/** Returns the most recent cached insights without triggering a recompute. */
+export function getCachedInsights(): InsightsData | null {
+  return cachedInsights
+}
+
+export async function computeInsights(state: CurrentState): Promise<InsightsData> {
   const now = Date.now()
   if (cachedInsights && now - cacheTimestamp < CACHE_TTL_MS) {
     return cachedInsights
   }
 
-  const energy = computeEnergyInsights(state.power, state.energyRate)
+  const energy = await computeEnergyInsights(state.power, state.energyRate)
   const temperature = computeTemperatureInsights(state.rooms, state.weather)
   const lux = computeLuxInsights(state.rooms)
   const battery = computeBatteryInsights(state.battery)
