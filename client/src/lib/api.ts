@@ -379,6 +379,10 @@ export interface DashboardSummary {
 export interface ActivityInsights {
   roomRanking: Array<{ room: string; events24h: number; peakHours: string }>
   dailyTrend: Array<{ day: string; totalEvents: number }>
+  hourlyPattern: Array<{ hour: number; avgEvents: number }>
+  hourlyByRoom: Array<{ room: string; data: Array<{ hour: number; avgEvents: number }> }>
+  dailyByRoom: Array<{ room: string; data: Array<{ day: string; totalEvents: number }> }>
+  roomIcons: Record<string, string | null>
   mostActiveRoom: { room: string; events24h: number } | null
   quietestRoom: { room: string; events24h: number } | null
 }

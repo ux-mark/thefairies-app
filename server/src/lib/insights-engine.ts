@@ -108,6 +108,17 @@ export interface BatteryInsights {
   worstDevice: { label: string; predictedDaysRemaining: number | null } | null
 }
 
+export interface ActivityInsights {
+  roomRanking: Array<{ room: string; events24h: number; peakHours: string }>
+  dailyTrend: Array<{ day: string; totalEvents: number }>
+  hourlyPattern: Array<{ hour: number; avgEvents: number }>
+  hourlyByRoom: Array<{ room: string; data: Array<{ hour: number; avgEvents: number }> }>
+  dailyByRoom: Array<{ room: string; data: Array<{ day: string; totalEvents: number }> }>
+  roomIcons: Record<string, string | null>
+  mostActiveRoom: { room: string; events24h: number } | null
+  quietestRoom: { room: string; events24h: number } | null
+}
+
 export interface AttentionItem {
   id: string
   severity: 'critical' | 'warning' | 'info'
@@ -128,6 +139,7 @@ export interface InsightsData {
   temperature: TemperatureInsights | null
   lux: LuxInsights | null
   battery: BatteryInsights | null
+  activity: ActivityInsights | null
   attention: AttentionItem[]
 }
 
@@ -724,6 +736,174 @@ function computeBatteryInsights(battery: BatteryDevice[]): BatteryInsights | nul
   }
 }
 
+// ── Activity insights ────────────────────────────────────────────────────────
+
+function formatHourRange(hour: number): string {
+  const h = hour % 12 || 12
+  const suffix = hour < 12 ? 'am' : 'pm'
+  const nextHour = (hour + 1) % 12 || 12
+  const nextSuffix = hour + 1 < 12 || hour + 1 === 24 ? 'am' : 'pm'
+  return `${h}${suffix}\u2013${nextHour}${nextSuffix}`
+}
+
+function computeActivityInsights(): ActivityInsights | null {
+  // Room ranking: events in last 24h per room
+  const roomRows = getAll<{ room_name: string; event_count: number }>(
+    `SELECT room_name, COUNT(*) as event_count
+     FROM room_activity
+     WHERE event_type = 'motion_active'
+       AND recorded_at > datetime('now', '-1 day')
+     GROUP BY room_name
+     ORDER BY event_count DESC`,
+    [],
+  )
+
+  if (roomRows.length === 0) return null
+
+  // Peak hours per room (7-day window, top 2 hours) — single query to avoid N+1
+  const peakRows = getAll<{ room_name: string; hour: number; count: number }>(
+    `SELECT room_name, CAST(strftime('%H', recorded_at, 'localtime') AS INTEGER) as hour, COUNT(*) as count
+     FROM room_activity
+     WHERE event_type = 'motion_active'
+       AND recorded_at > datetime('now', '-7 days')
+     GROUP BY room_name, strftime('%H', recorded_at, 'localtime')
+     ORDER BY room_name, count DESC`,
+    [],
+  )
+
+  // Build a map of room -> top 2 peak hours
+  const peakMap = new Map<string, string>()
+  const roomPeakCounts = new Map<string, number>()
+  for (const row of peakRows) {
+    const count = roomPeakCounts.get(row.room_name) ?? 0
+    if (count < 2) {
+      const existing = peakMap.get(row.room_name)
+      const formatted = formatHourRange(row.hour)
+      peakMap.set(row.room_name, existing ? `${existing}, ${formatted}` : formatted)
+      roomPeakCounts.set(row.room_name, count + 1)
+    }
+  }
+
+  const roomRanking = roomRows.map((r) => ({
+    room: r.room_name,
+    events24h: r.event_count,
+    peakHours: peakMap.get(r.room_name) ?? '',
+  }))
+
+  // Daily trend: last 7 days
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const trendRows = getAll<{ day: string; total_events: number }>(
+    `SELECT date(recorded_at, 'localtime') as day, COUNT(*) as total_events
+     FROM room_activity
+     WHERE event_type = 'motion_active'
+       AND recorded_at > datetime('now', '-7 days')
+     GROUP BY date(recorded_at, 'localtime')
+     ORDER BY day`,
+    [],
+  )
+  const dailyTrend = trendRows.map((r) => {
+    const d = new Date(r.day + 'T00:00:00')
+    return { day: dayNames[d.getDay()], totalEvents: r.total_events }
+  })
+
+  // Hourly pattern: 7-day average events per hour of day (house-wide)
+  const daysOfData = getOne<{ days: number }>(
+    `SELECT MAX(1, CAST(julianday('now') - julianday(MIN(recorded_at)) AS INTEGER)) as days
+     FROM room_activity
+     WHERE event_type = 'motion_active' AND recorded_at > datetime('now', '-7 days')`,
+    [],
+  )?.days ?? 7
+  const hourlyRows = getAll<{ hour: number; total: number }>(
+    `SELECT CAST(strftime('%H', recorded_at, 'localtime') AS INTEGER) as hour, COUNT(*) as total
+     FROM room_activity
+     WHERE event_type = 'motion_active'
+       AND recorded_at > datetime('now', '-7 days')
+     GROUP BY strftime('%H', recorded_at, 'localtime')
+     ORDER BY hour`,
+    [],
+  )
+  const hourlyMap = new Map(hourlyRows.map((r) => [r.hour, r.total]))
+  const hourlyPattern = Array.from({ length: 24 }, (_, h) => ({
+    hour: h,
+    avgEvents: Math.round((hourlyMap.get(h) ?? 0) / daysOfData),
+  }))
+
+  // Per-room hourly breakdown (reuse peakRows which has room_name + hour + count)
+  const roomNames = roomRows.map((r) => r.room_name)
+  const hourlyByRoomMap = new Map<string, Map<number, number>>()
+  for (const row of peakRows) {
+    let roomMap = hourlyByRoomMap.get(row.room_name)
+    if (!roomMap) {
+      roomMap = new Map()
+      hourlyByRoomMap.set(row.room_name, roomMap)
+    }
+    roomMap.set(row.hour, row.count)
+  }
+  const hourlyByRoom = roomNames.map((room) => {
+    const roomMap = hourlyByRoomMap.get(room) ?? new Map()
+    return {
+      room,
+      data: Array.from({ length: 24 }, (_, h) => ({
+        hour: h,
+        avgEvents: Math.round((roomMap.get(h) ?? 0) / daysOfData),
+      })),
+    }
+  })
+
+  // Per-room daily breakdown
+  const dailyByRoomRows = getAll<{ room_name: string; day: string; total_events: number }>(
+    `SELECT room_name, date(recorded_at, 'localtime') as day, COUNT(*) as total_events
+     FROM room_activity
+     WHERE event_type = 'motion_active'
+       AND recorded_at > datetime('now', '-7 days')
+     GROUP BY room_name, date(recorded_at, 'localtime')
+     ORDER BY room_name, day`,
+    [],
+  )
+  // Get the set of all days from the house-wide trend
+  const allDays = dailyTrend.map((d) => d.day)
+  const allDayDates = trendRows.map((r) => r.day)
+  const dailyByRoomMap = new Map<string, Map<string, number>>()
+  for (const row of dailyByRoomRows) {
+    let roomMap = dailyByRoomMap.get(row.room_name)
+    if (!roomMap) {
+      roomMap = new Map()
+      dailyByRoomMap.set(row.room_name, roomMap)
+    }
+    roomMap.set(row.day, row.total_events)
+  }
+  const dailyByRoom = roomNames.map((room) => {
+    const roomMap = dailyByRoomMap.get(room) ?? new Map()
+    return {
+      room,
+      data: allDayDates.map((dateStr, i) => ({
+        day: allDays[i],
+        totalEvents: roomMap.get(dateStr) ?? 0,
+      })),
+    }
+  })
+
+  // Room icons
+  const iconRows = getAll<{ name: string; icon: string | null }>(
+    'SELECT name, icon FROM rooms',
+    [],
+  )
+  const roomIcons: Record<string, string | null> = {}
+  for (const row of iconRows) roomIcons[row.name] = row.icon
+
+  // Most active / quietest
+  const mostActiveRoom = { room: roomRanking[0].room, events24h: roomRanking[0].events24h }
+  const quietestRoom =
+    roomRanking.length > 1
+      ? {
+          room: roomRanking[roomRanking.length - 1].room,
+          events24h: roomRanking[roomRanking.length - 1].events24h,
+        }
+      : null
+
+  return { roomRanking, dailyTrend, hourlyPattern, hourlyByRoom, dailyByRoom, roomIcons, mostActiveRoom, quietestRoom }
+}
+
 // ── Device label resolver (fallback for notifications with null source_label) ─
 
 function resolveDeviceLabel(deviceType: string, deviceId: string): string | null {
@@ -990,6 +1170,7 @@ export async function computeInsights(state: CurrentState): Promise<InsightsData
   const temperature = computeTemperatureInsights(state.rooms, state.weather)
   const lux = computeLuxInsights(state.rooms)
   const battery = computeBatteryInsights(state.battery)
+  const activity = computeActivityInsights()
   const attention = computeAttentionItems(
     state.battery,
     battery,
@@ -997,7 +1178,7 @@ export async function computeInsights(state: CurrentState): Promise<InsightsData
     temperature,
   )
 
-  const insights: InsightsData = { energy, temperature, lux, battery, attention }
+  const insights: InsightsData = { energy, temperature, lux, battery, activity, attention }
   cachedInsights = insights
   cacheTimestamp = now
 
