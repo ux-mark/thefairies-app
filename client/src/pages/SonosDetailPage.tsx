@@ -2,12 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as Switch from '@radix-ui/react-switch'
-import { Trash2, ChevronDown } from 'lucide-react'
+import { Pencil, Volume2, VolumeX, Zap, CirclePause, CircleSlash } from 'lucide-react'
 import { io, Socket } from 'socket.io-client'
 import { api, type Room, type AutoPlayRule } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { BackLink } from '@/components/ui/BackLink'
 import { Accordion } from '@/components/ui/Accordion'
+import { PillSelect } from '@/components/ui/PillSelect'
+import { CardRadioGroup } from '@/components/ui/CardRadioGroup'
+import { FavouriteSelector } from '@/components/sonos/FavouriteSelector'
 import { useToast } from '@/hooks/useToast'
 
 // ── Socket singleton (reuse the same pattern as useSocket.ts) ─────────────────
@@ -40,11 +43,23 @@ function formatPlaybackState(state: string): string {
   }
 }
 
-function formatRuleSentence(rule: AutoPlayRule): string {
+function formatRuleSentence(rule: AutoPlayRule): { main: string; condition?: string } {
   const action = rule.favourite_name === '__continue__'
     ? "Continue what's already playing"
     : `Play "${rule.favourite_name}"`
-  return `${action} when mode changes to "${rule.mode_name}"`
+  const main = `${action} when mode changes to "${rule.mode_name}".`
+  let condition: string | undefined
+  if (rule.trigger_type === 'if_not_playing') {
+    condition = 'Only if nothing is playing.'
+  } else if (rule.trigger_type === 'if_source_not' && rule.trigger_value) {
+    condition = `Only if "${rule.trigger_value}" is not active.`
+  }
+  return { main, condition }
+}
+
+function formatRuleAccessible(rule: AutoPlayRule): string {
+  const { main, condition } = formatRuleSentence(rule)
+  return condition ? `${main} ${condition}` : main
 }
 
 // ── Loading skeleton ──────────────────────────────────────────────────────────
@@ -128,11 +143,12 @@ export default function SonosDetailPage() {
   const [roomDropdownOpen, setRoomDropdownOpen] = useState(false)
   const roomDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Inline add rule form state
+  // Inline add/edit rule form state
   const [showAddRuleForm, setShowAddRuleForm] = useState(false)
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null)
   const [newRuleFavourite, setNewRuleFavourite] = useState('')
   const [newRuleMode, setNewRuleMode] = useState('')
-  const [newRuleTriggerType, setNewRuleTriggerType] = useState<AutoPlayRule['trigger_type']>('mode_change')
+  const [newRuleTriggerType, setNewRuleTriggerType] = useState<AutoPlayRule['trigger_type']>('if_not_playing')
   const [newRuleSourceValue, setNewRuleSourceValue] = useState('')
 
   // Local default volume (slider) -- tracked as delta from server value
@@ -182,6 +198,11 @@ export default function SonosDetailPage() {
   const speakerMapping = speakers?.find(s => s.speaker_name === speaker)
   const assignedRoom: Room | undefined = rooms?.find(r => r.name === speakerMapping?.room_name)
   const assignedRoomRules = autoPlayRules?.filter(r => r.room_name === assignedRoom?.name) ?? []
+  const { data: availableSources } = useQuery({
+    queryKey: ['sonos', 'services'],
+    queryFn: api.sonos.getServices,
+    staleTime: 60_000,
+  })
 
   // ── Socket subscription ──────────────────────────────────────────────────────
 
@@ -247,11 +268,7 @@ export default function SonosDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sonos', 'auto-play'] })
       toast({ message: 'Auto-play rule added' })
-      setShowAddRuleForm(false)
-      setNewRuleFavourite('')
-      setNewRuleMode('')
-      setNewRuleTriggerType('mode_change')
-      setNewRuleSourceValue('')
+      resetRuleForm()
     },
     onError: () => toast({ message: 'Failed to add rule', type: 'error' }),
   })
@@ -270,9 +287,78 @@ export default function SonosDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sonos', 'auto-play'] })
       toast({ message: 'Auto-play rule deleted' })
+      setEditingRuleId(null)
     },
     onError: () => toast({ message: 'Failed to delete rule', type: 'error' }),
   })
+
+  const editRuleMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<AutoPlayRule> }) =>
+      api.sonos.updateAutoPlayRule(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sonos', 'auto-play'] })
+      toast({ message: 'Auto-play rule updated' })
+      resetRuleForm()
+    },
+    onError: () => toast({ message: 'Failed to update rule', type: 'error' }),
+  })
+
+  function resetRuleForm() {
+    setShowAddRuleForm(false)
+    setEditingRuleId(null)
+    setNewRuleFavourite('')
+    setNewRuleMode('')
+    setNewRuleTriggerType('if_not_playing')
+    setNewRuleSourceValue('')
+  }
+
+  function openEditRule(rule: AutoPlayRule) {
+    setShowAddRuleForm(false)
+    setEditingRuleId(rule.id)
+    setNewRuleFavourite(rule.favourite_name)
+    setNewRuleMode(rule.mode_name)
+    setNewRuleTriggerType(rule.trigger_type)
+    setNewRuleSourceValue(rule.trigger_value ?? '')
+  }
+
+  // ── Live volume + mute mutations ────────────────────────────────────────────
+
+  const [liveVolume, setLiveVolume] = useState<number | null>(null)
+  const liveVolumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const setLiveVolumeMutation = useMutation({
+    mutationFn: (level: number) => api.sonos.setVolume(speaker!, level),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sonos', 'state', speaker] })
+    },
+    onError: () => toast({ message: 'Failed to set volume', type: 'error' }),
+  })
+
+  const setMuteMutation = useMutation({
+    mutationFn: (muted: boolean) => api.sonos.setMute(speaker!, muted),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sonos', 'state', speaker] })
+    },
+    onError: () => toast({ message: 'Failed to toggle mute', type: 'error' }),
+  })
+
+  function handleLiveVolumeChange(value: number) {
+    setLiveVolume(value)
+    if (liveVolumeTimer.current) clearTimeout(liveVolumeTimer.current)
+    liveVolumeTimer.current = setTimeout(() => {
+      // Auto-unmute when slider moves while muted
+      if (playbackState?.mute) {
+        setMuteMutation.mutate(false)
+      }
+      setLiveVolumeMutation.mutate(value)
+      setLiveVolume(null)
+    }, 300)
+  }
+
+  function handleMuteToggle() {
+    if (!playbackState) return
+    setMuteMutation.mutate(!playbackState.mute)
+  }
 
   // ── Volume save on debounce ──────────────────────────────────────────────────
 
@@ -393,7 +479,7 @@ export default function SonosDetailPage() {
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-3 pt-1">
+            <div className="space-y-2 pt-1">
               <span
                 className={cn(
                   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
@@ -404,12 +490,43 @@ export default function SonosDetailPage() {
               >
                 {formatPlaybackState(playbackState.playbackState)}
               </span>
-              <span className="text-caption text-xs">
-                Volume: {playbackState.volume}%
-              </span>
-              {playbackState.mute && (
-                <span className="text-xs text-amber-400">Muted</span>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleMuteToggle}
+                  disabled={setMuteMutation.isPending}
+                  aria-label={playbackState.mute ? `Unmute ${speaker}` : `Mute ${speaker}`}
+                  className={cn(
+                    'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                    'disabled:cursor-not-allowed disabled:opacity-40',
+                    playbackState.mute
+                      ? 'text-amber-400 hover:bg-amber-500/10'
+                      : 'text-body hover:bg-fairy-500/10',
+                  )}
+                >
+                  {playbackState.mute
+                    ? <VolumeX className="h-5 w-5" aria-hidden="true" />
+                    : <Volume2 className="h-5 w-5" aria-hidden="true" />}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={liveVolume ?? playbackState.volume}
+                  onChange={e => handleLiveVolumeChange(Number(e.target.value))}
+                  aria-label={`Volume for ${speaker}`}
+                  className={cn(
+                    'fairy-slider flex-1',
+                    playbackState.mute && 'opacity-40',
+                  )}
+                />
+                <span className={cn(
+                  'w-10 text-right text-sm tabular-nums',
+                  playbackState.mute ? 'text-amber-400' : 'text-body',
+                )}>
+                  {liveVolume ?? playbackState.volume}%
+                </span>
+              </div>
             </div>
           </div>
         ) : (
@@ -482,7 +599,7 @@ export default function SonosDetailPage() {
               <span>Default volume</span>
               <span className="text-body text-sm font-normal">{effectiveVolume}%</span>
             </label>
-            <p className="text-caption text-xs mb-3">Default volume for this speaker.</p>
+            <p className="text-caption text-xs mb-3">Volume level used when follow-me joins this speaker to a group.</p>
             <input
               id="default-volume"
               type="range"
@@ -492,7 +609,7 @@ export default function SonosDetailPage() {
               onChange={e => handleVolumeChange(Number(e.target.value))}
               disabled={!speakerMapping}
               className={cn(
-                'h-11 w-full cursor-pointer appearance-none rounded-lg',
+                'fairy-slider w-full',
                 !speakerMapping && 'cursor-not-allowed opacity-40',
               )}
               aria-label={`Default volume for ${speaker}`}
@@ -533,55 +650,177 @@ export default function SonosDetailPage() {
           <div className="space-y-3">
             {assignedRoomRules.length > 0 && (
               <ul className="space-y-3" role="list">
-                {assignedRoomRules.map(rule => (
-                  <li
-                    key={rule.id}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-4 py-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className={cn('text-sm', rule.enabled ? 'text-body' : 'text-caption line-through')}>
-                        {formatRuleSentence(rule)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Switch.Root
-                        checked={!!rule.enabled}
-                        onCheckedChange={checked =>
-                          toggleRuleMutation.mutate({ id: rule.id, enabled: checked })
-                        }
-                        disabled={toggleRuleMutation.isPending}
-                        aria-label={`${rule.enabled ? 'Disable' : 'Enable'} rule: ${formatRuleSentence(rule)}`}
-                        className={cn(
-                          'relative h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors',
-                          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                          'disabled:cursor-not-allowed disabled:opacity-40',
-                          rule.enabled ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
+                {assignedRoomRules.map(rule => {
+                  const { main, condition } = formatRuleSentence(rule)
+                  const isEditing = editingRuleId === rule.id
+
+                  if (isEditing) {
+                    return (
+                      <li key={rule.id} className="rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-4 space-y-4">
+                        <p className="text-heading text-sm font-medium">Edit auto-play rule</p>
+
+                        {/* Room — read-only */}
+                        <div>
+                          <p className="text-heading text-sm mb-1.5">Room</p>
+                          <span className="inline-flex items-center rounded-full bg-fairy-500/10 px-3 py-1.5 text-sm font-medium text-fairy-400">{assignedRoom.name}</span>
+                        </div>
+
+                        {/* Favourite */}
+                        <div>
+                          <label htmlFor="edit-rule-favourite" className="text-heading text-sm mb-1.5 block">Favourite</label>
+                          <FavouriteSelector
+                            favourites={favourites ?? []}
+                            value={newRuleFavourite}
+                            onChange={setNewRuleFavourite}
+                            id="edit-rule-favourite"
+                          />
+                        </div>
+
+                        {/* Mode */}
+                        <div>
+                          <p className="text-heading text-sm mb-1.5">Mode</p>
+                          <PillSelect
+                            id="edit-rule-mode"
+                            options={modes?.map(m => ({ value: m.name, label: m.name })) ?? []}
+                            value={newRuleMode}
+                            onChange={setNewRuleMode}
+                            placeholder="Select a mode"
+                            aria-label="Select a mode"
+                          />
+                        </div>
+
+                        {/* Condition */}
+                        {newRuleFavourite !== '__continue__' && (
+                          <div>
+                            <p className="text-heading text-sm mb-2">Condition</p>
+                            <CardRadioGroup
+                              name="edit-trigger-type"
+                              options={[
+                                { value: 'if_not_playing', label: 'Only if nothing is playing', description: 'Skipped when music is already playing.', icon: CirclePause },
+                                { value: 'mode_change', label: 'Always when mode changes', description: 'Starts playback every time this mode activates.', icon: Zap },
+                                { value: 'if_source_not', label: 'Only if a source is not active', description: 'Skipped when a specific source is playing.', icon: CircleSlash },
+                              ]}
+                              value={newRuleTriggerType}
+                              onChange={(v) => setNewRuleTriggerType(v as AutoPlayRule['trigger_type'])}
+                              aria-label="Trigger condition"
+                            />
+                            {newRuleTriggerType === 'if_source_not' && (
+                              <div className="mt-3">
+                                <label htmlFor="edit-rule-source" className="text-caption text-xs mb-1.5 block">Source</label>
+                                <PillSelect
+                                  id="edit-rule-source"
+                                  options={(availableSources ?? []).map(s => ({ value: s, label: s }))}
+                                  value={newRuleSourceValue}
+                                  onChange={setNewRuleSourceValue}
+                                  aria-label="Select a source"
+                                />
+                              </div>
+                            )}
+                          </div>
                         )}
-                      >
-                        <Switch.Thumb
+
+                        {/* Save / Cancel */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              if (!newRuleFavourite || !newRuleMode) return
+                              const effectiveTrigger = newRuleFavourite === '__continue__' ? 'mode_change' : newRuleTriggerType
+                              editRuleMutation.mutate({
+                                id: rule.id,
+                                data: {
+                                  mode_name: newRuleMode,
+                                  favourite_name: newRuleFavourite,
+                                  trigger_type: effectiveTrigger,
+                                  trigger_value: effectiveTrigger === 'if_source_not' ? newRuleSourceValue : null,
+                                },
+                              })
+                            }}
+                            disabled={!newRuleFavourite || !newRuleMode || (newRuleTriggerType === 'if_source_not' && newRuleFavourite !== '__continue__' && !newRuleSourceValue) || editRuleMutation.isPending}
+                            className="rounded-lg px-4 py-2 min-h-[44px] bg-fairy-500 text-white text-sm font-medium hover:bg-fairy-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                          >
+                            {editRuleMutation.isPending ? 'Saving...' : 'Save changes'}
+                          </button>
+                          <button
+                            onClick={resetRuleForm}
+                            className="rounded-lg px-4 py-2 min-h-[44px] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-heading text-sm hover:bg-[var(--bg-tertiary)] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                        {/* Danger zone */}
+                        <div className="border-t border-red-500/20 pt-4 mt-4">
+                          <p className="text-sm font-medium text-red-400 mb-2">Danger zone</p>
+                          <button
+                            onClick={() => deleteRuleMutation.mutate(rule.id)}
+                            disabled={deleteRuleMutation.isPending}
+                            className={cn(
+                              'rounded-lg px-4 py-2 min-h-[44px] text-sm font-medium transition-colors',
+                              'border border-red-500/30 text-red-400 hover:bg-red-500/10',
+                              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500',
+                              'disabled:cursor-not-allowed disabled:opacity-40',
+                            )}
+                          >
+                            {deleteRuleMutation.isPending ? 'Deleting...' : 'Delete this rule'}
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  }
+
+                  return (
+                    <li
+                      key={rule.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-4 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className={cn('text-sm', rule.enabled ? 'text-body' : 'text-caption line-through')}>
+                          {main}
+                        </p>
+                        {condition && (
+                          <p className={cn('text-xs mt-0.5', rule.enabled ? 'text-caption' : 'text-caption line-through')}>
+                            {condition}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Switch.Root
+                          checked={!!rule.enabled}
+                          onCheckedChange={checked =>
+                            toggleRuleMutation.mutate({ id: rule.id, enabled: checked })
+                          }
+                          disabled={toggleRuleMutation.isPending}
+                          aria-label={`${rule.enabled ? 'Disable' : 'Enable'} rule: ${formatRuleAccessible(rule)}`}
                           className={cn(
-                            'block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                            rule.enabled ? 'translate-x-5' : 'translate-x-1',
+                            'relative h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors',
+                            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                            'disabled:cursor-not-allowed disabled:opacity-40',
+                            rule.enabled ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
                           )}
-                        />
-                      </Switch.Root>
-                      <button
-                        onClick={() => deleteRuleMutation.mutate(rule.id)}
-                        disabled={deleteRuleMutation.isPending}
-                        aria-label={`Delete rule: ${formatRuleSentence(rule)}`}
-                        className={cn(
-                          'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg',
-                          'text-caption transition-colors hover:bg-red-500/10 hover:text-red-400',
-                          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500',
-                          'disabled:cursor-not-allowed disabled:opacity-40',
-                        )}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        <span className="sr-only">Delete rule</span>
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                        >
+                          <Switch.Thumb
+                            className={cn(
+                              'block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                              rule.enabled ? 'translate-x-5' : 'translate-x-1',
+                            )}
+                          />
+                        </Switch.Root>
+                        <button
+                          onClick={() => openEditRule(rule)}
+                          aria-label={`Edit rule: ${formatRuleAccessible(rule)}`}
+                          className={cn(
+                            'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg',
+                            'text-caption transition-colors hover:bg-fairy-500/10 hover:text-fairy-400',
+                            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                          )}
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                          <span className="sr-only">Edit rule</span>
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             )}
 
@@ -591,8 +830,8 @@ export default function SonosDetailPage() {
 
                 {/* Room — read-only */}
                 <div>
-                  <label htmlFor="detail-rule-room" className="text-heading text-sm mb-1.5 block">Room</label>
-                  <input id="detail-rule-room" type="text" readOnly value={assignedRoom.name} className="flex min-h-[44px] w-full items-center rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-tertiary)] px-3 text-sm text-caption opacity-70" />
+                  <p className="text-heading text-sm mb-1.5">Room</p>
+                  <span className="inline-flex items-center rounded-full bg-fairy-500/10 px-3 py-1.5 text-sm font-medium text-fairy-400">{assignedRoom.name}</span>
                 </div>
 
                 {/* Favourite */}
@@ -600,85 +839,57 @@ export default function SonosDetailPage() {
                   <label htmlFor="detail-rule-favourite" className="text-heading text-sm mb-1.5 block">
                     Favourite
                   </label>
-                  <div className="relative">
-                    <select
-                      id="detail-rule-favourite"
-                      value={newRuleFavourite}
-                      onChange={e => setNewRuleFavourite(e.target.value)}
-                      className="surface w-full appearance-none rounded-lg border border-[var(--border-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                    >
-                      <option value="">Select a favourite</option>
-                      <option value="__continue__">Continue what's already playing</option>
-                      {favourites?.map(fav => (
-                        <option key={fav.title} value={fav.title}>{fav.title}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" aria-hidden="true" />
-                  </div>
+                  <FavouriteSelector
+                    favourites={favourites ?? []}
+                    value={newRuleFavourite}
+                    onChange={setNewRuleFavourite}
+                    id="detail-rule-favourite"
+                  />
                 </div>
 
                 {/* Mode */}
                 <div>
-                  <label htmlFor="detail-rule-mode" className="text-heading text-sm mb-1.5 block">
-                    Mode
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="detail-rule-mode"
-                      value={newRuleMode}
-                      onChange={e => setNewRuleMode(e.target.value)}
-                      className="surface w-full appearance-none rounded-lg border border-[var(--border-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                    >
-                      <option value="">Select a mode</option>
-                      {modes?.map(m => (
-                        <option key={m.name} value={m.name}>{m.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" aria-hidden="true" />
-                  </div>
+                  <p className="text-heading text-sm mb-1.5">Mode</p>
+                  <PillSelect
+                    id="detail-rule-mode"
+                    options={modes?.map(m => ({ value: m.name, label: m.name })) ?? []}
+                    value={newRuleMode}
+                    onChange={setNewRuleMode}
+                    placeholder="Select a mode"
+                    aria-label="Select a mode"
+                  />
                 </div>
 
                 {/* Condition — hidden when __continue__ (only mode_change makes sense) */}
                 {newRuleFavourite !== '__continue__' && (
-                  <fieldset>
-                    <legend className="text-heading text-sm mb-2">Condition</legend>
-                    <div className="space-y-2">
-                      {(
-                        [
-                          { value: 'mode_change', label: 'Always when mode changes' },
-                          { value: 'if_not_playing', label: 'Only if nothing is playing' },
-                          { value: 'if_source_not', label: 'Only if a source is not active' },
-                        ] as { value: AutoPlayRule['trigger_type']; label: string }[]
-                      ).map(({ value, label }) => (
-                        <label key={value} className="flex items-center gap-2 cursor-pointer min-h-[44px]">
-                          <input
-                            type="radio"
-                            name="detail-trigger-type"
-                            value={value}
-                            checked={newRuleTriggerType === value}
-                            onChange={() => setNewRuleTriggerType(value)}
-                            className="h-4 w-4 accent-fairy-500"
-                          />
-                          <span className="text-heading text-sm">{label}</span>
-                        </label>
-                      ))}
-                    </div>
+                  <div>
+                    <p className="text-heading text-sm mb-2">Condition</p>
+                    <CardRadioGroup
+                      name="detail-trigger-type"
+                      options={[
+                        { value: 'if_not_playing', label: 'Only if nothing is playing', description: 'Skipped when music is already playing.', icon: CirclePause },
+                        { value: 'mode_change', label: 'Always when mode changes', description: 'Starts playback every time this mode activates.', icon: Zap },
+                        { value: 'if_source_not', label: 'Only if a source is not active', description: 'Skipped when a specific source is playing.', icon: CircleSlash },
+                      ]}
+                      value={newRuleTriggerType}
+                      onChange={(v) => setNewRuleTriggerType(v as AutoPlayRule['trigger_type'])}
+                      aria-label="Trigger condition"
+                    />
                     {newRuleTriggerType === 'if_source_not' && (
                       <div className="mt-3">
                         <label htmlFor="detail-rule-source" className="text-caption text-xs mb-1.5 block">
-                          Source name
+                          Source
                         </label>
-                        <input
+                        <PillSelect
                           id="detail-rule-source"
-                          type="text"
+                          options={(availableSources ?? []).map(s => ({ value: s, label: s }))}
                           value={newRuleSourceValue}
-                          onChange={e => setNewRuleSourceValue(e.target.value)}
-                          placeholder="e.g. Spotify"
-                          className="w-full rounded-lg border border-[var(--border-secondary)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-heading min-h-[44px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                          onChange={setNewRuleSourceValue}
+                          aria-label="Select a source"
                         />
                       </div>
                     )}
-                  </fieldset>
+                  </div>
                 )}
 
                 {/* Actions */}
@@ -702,22 +913,16 @@ export default function SonosDetailPage() {
                     {createRuleMutation.isPending ? 'Saving...' : 'Save rule'}
                   </button>
                   <button
-                    onClick={() => {
-                      setShowAddRuleForm(false)
-                      setNewRuleFavourite('')
-                      setNewRuleMode('')
-                      setNewRuleTriggerType('mode_change')
-                      setNewRuleSourceValue('')
-                    }}
+                    onClick={resetRuleForm}
                     className="rounded-lg px-4 py-2 min-h-[44px] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] text-heading text-sm hover:bg-[var(--bg-tertiary)] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
                   >
                     Cancel
                   </button>
                 </div>
               </div>
-            ) : (
+            ) : !editingRuleId && (
               <button
-                onClick={() => setShowAddRuleForm(true)}
+                onClick={() => { resetRuleForm(); setShowAddRuleForm(true) }}
                 className="rounded-lg px-4 py-2 min-h-[44px] bg-fairy-500 text-white text-sm font-medium hover:bg-fairy-600 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
               >
                 Add auto-play rule

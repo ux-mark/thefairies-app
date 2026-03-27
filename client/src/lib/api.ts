@@ -42,6 +42,7 @@ export interface Room {
   lux: number | null
   sonos_follow_me: boolean
   sonos_auto_start: boolean
+  icon: string | null
 }
 
 export interface RoomDetail extends Room {
@@ -242,6 +243,7 @@ export interface ModeTrigger {
 
 export interface ModeWithTriggers {
   name: string
+  icon: string | null
   triggers: ModeTrigger[]
   isSleepMode: boolean
 }
@@ -634,6 +636,8 @@ export interface SonosZone {
 
 export interface SonosFavourite {
   title: string
+  uri?: string
+  albumArtURI?: string
 }
 
 export interface SonosSpeakerMapping {
@@ -1055,6 +1059,7 @@ export const api = {
     getZones: () => fetchApi<SonosZone[]>('/sonos/zones'),
     getState: (speaker: string) => fetchApi<SonosPlaybackState>('/sonos/state/' + encodeURIComponent(speaker)),
     getFavourites: () => fetchApi<SonosFavourite[]>('/sonos/favourites'),
+    getServices: () => fetchApi<string[]>('/sonos/services'),
     getFollowMeStatus: () => fetchApi<FollowMeStatus>('/sonos/follow-me/status'),
     toggleFollowMe: (enabled: boolean) =>
       fetchApi<{ enabled: boolean }>('/sonos/follow-me/toggle', {
@@ -1087,6 +1092,23 @@ export const api = {
       }),
     deleteAutoPlayRule: (id: number) =>
       fetchApi<{ deleted: boolean }>('/sonos/auto-play/' + id, { method: 'DELETE' }),
+    setVolume: (speaker: string, level: number) =>
+      fetchApi<{ speaker: string; volume: number }>('/sonos/volume/' + encodeURIComponent(speaker), {
+        method: 'PUT',
+        body: JSON.stringify({ level }),
+      }),
+    setMute: (speaker: string, muted: boolean) =>
+      fetchApi<{ speaker: string; muted: boolean }>('/sonos/mute/' + encodeURIComponent(speaker), {
+        method: 'PUT',
+        body: JSON.stringify({ muted }),
+      }),
+    muteAll: (muted: boolean) =>
+      fetchApi<{ muted: boolean; affectedSpeakers: number }>('/sonos/mute-all', {
+        method: 'PUT',
+        body: JSON.stringify({ muted }),
+      }),
+    getMuteStatus: () =>
+      fetchApi<{ allMuted: boolean; mutedCount: number; totalSpeakers: number }>('/sonos/mute-status'),
     health: () => fetchApi<{ available: boolean }>('/sonos/health'),
   },
 }
