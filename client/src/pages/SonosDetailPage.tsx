@@ -44,9 +44,12 @@ function formatPlaybackState(state: string): string {
 }
 
 function formatRuleSentence(rule: AutoPlayRule): { main: string; condition?: string } {
+  const isPodcast = !!rule.podcast_feed_url
   const action = rule.favourite_name === '__continue__'
     ? "Continue what's already playing"
-    : `Play "${rule.favourite_name}"`
+    : isPodcast
+      ? `Play latest "${rule.favourite_name}" episode`
+      : `Play "${rule.favourite_name}"`
   const main = `${action} when mode changes to "${rule.mode_name}".`
   let condition: string | undefined
   if (rule.trigger_type === 'if_not_playing') {
@@ -155,6 +158,39 @@ export default function SonosDetailPage() {
   const [newRuleTriggerType, setNewRuleTriggerType] = useState<AutoPlayRule['trigger_type']>('if_not_playing')
   const [newRuleSourceValue, setNewRuleSourceValue] = useState('')
   const [newRuleMaxPlays, setNewRuleMaxPlays] = useState<string>('')
+  const [podcastFeedUrl, setPodcastFeedUrl] = useState<string | null>(null)
+  const [podcastResolving, setPodcastResolving] = useState(false)
+  const [podcastFailed, setPodcastFailed] = useState(false)
+  const [manualFeedUrl, setManualFeedUrl] = useState('')
+
+  // Auto-detect podcast when favourite changes
+  useEffect(() => {
+    const fav = newRuleFavourite
+    if (!fav || fav === '__continue__') {
+      setPodcastFeedUrl(null)
+      setPodcastFailed(false)
+      setManualFeedUrl('')
+      return
+    }
+    let cancelled = false
+    setPodcastResolving(true)
+    setPodcastFailed(false)
+    api.sonos.resolvePodcast(fav).then(result => {
+      if (cancelled) return
+      setPodcastResolving(false)
+      if (result.isPodcast) {
+        if (result.feedUrl) {
+          setPodcastFeedUrl(result.feedUrl)
+        } else {
+          setPodcastFailed(true)
+          setPodcastFeedUrl(null)
+        }
+      } else {
+        setPodcastFeedUrl(null)
+      }
+    }).catch(() => { if (!cancelled) setPodcastResolving(false) })
+    return () => { cancelled = true }
+  }, [newRuleFavourite])
 
   // Local default volume (slider) -- tracked as delta from server value
   const [volumeDelta, setVolumeDelta] = useState<number | null>(null)
@@ -316,6 +352,9 @@ export default function SonosDetailPage() {
     setNewRuleTriggerType('if_not_playing')
     setNewRuleSourceValue('')
     setNewRuleMaxPlays('')
+    setPodcastFeedUrl(null)
+    setPodcastFailed(false)
+    setManualFeedUrl('')
   }
 
   function openEditRule(rule: AutoPlayRule) {
@@ -326,6 +365,9 @@ export default function SonosDetailPage() {
     setNewRuleTriggerType(rule.trigger_type)
     setNewRuleSourceValue(rule.trigger_value ?? '')
     setNewRuleMaxPlays(rule.max_plays !== null ? String(rule.max_plays) : '')
+    setPodcastFeedUrl(rule.podcast_feed_url ?? null)
+    setPodcastFailed(false)
+    setManualFeedUrl('')
   }
 
   // ── Live volume + mute mutations ────────────────────────────────────────────
@@ -681,6 +723,24 @@ export default function SonosDetailPage() {
                             onChange={setNewRuleFavourite}
                             id="edit-rule-favourite"
                           />
+                          {podcastResolving && (
+                            <p className="text-caption text-xs mt-1">Detecting podcast...</p>
+                          )}
+                          {podcastFeedUrl && !podcastResolving && (
+                            <p className="text-xs mt-1 text-fairy-400">Podcast detected. The latest episode will play automatically.</p>
+                          )}
+                          {podcastFailed && !podcastResolving && (
+                            <div className="mt-2">
+                              <p className="text-xs text-amber-400 mb-1">Podcast detected, but we could not find its feed automatically.</p>
+                              <input
+                                type="url"
+                                value={manualFeedUrl}
+                                onChange={e => setManualFeedUrl(e.target.value)}
+                                placeholder="Paste the podcast RSS feed URL"
+                                className="w-full h-11 rounded-lg border border-[var(--border-secondary)] surface px-3 text-sm text-heading placeholder:text-caption focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                              />
+                            </div>
+                          )}
                         </div>
 
                         {/* Mode */}
@@ -760,6 +820,7 @@ export default function SonosDetailPage() {
                                   trigger_type: effectiveTrigger,
                                   trigger_value: effectiveTrigger === 'if_source_not' ? newRuleSourceValue : null,
                                   max_plays: newRuleMaxPlays ? Number(newRuleMaxPlays) : null,
+                                  podcast_feed_url: podcastFeedUrl ?? (podcastFailed && manualFeedUrl ? manualFeedUrl : null),
                                 },
                               })
                             }}
@@ -873,6 +934,24 @@ export default function SonosDetailPage() {
                     onChange={setNewRuleFavourite}
                     id="detail-rule-favourite"
                   />
+                  {podcastResolving && (
+                    <p className="text-caption text-xs mt-1">Detecting podcast...</p>
+                  )}
+                  {podcastFeedUrl && !podcastResolving && (
+                    <p className="text-xs mt-1 text-fairy-400">Podcast detected. The latest episode will play automatically.</p>
+                  )}
+                  {podcastFailed && !podcastResolving && (
+                    <div className="mt-2">
+                      <p className="text-xs text-amber-400 mb-1">Podcast detected, but we could not find its feed automatically.</p>
+                      <input
+                        type="url"
+                        value={manualFeedUrl}
+                        onChange={e => setManualFeedUrl(e.target.value)}
+                        placeholder="Paste the podcast RSS feed URL"
+                        className="w-full h-11 rounded-lg border border-[var(--border-secondary)] surface px-3 text-sm text-heading placeholder:text-caption focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Mode */}
@@ -954,6 +1033,7 @@ export default function SonosDetailPage() {
                         trigger_value: effectiveTrigger === 'if_source_not' ? newRuleSourceValue : null,
                         enabled: 1,
                         max_plays: newRuleMaxPlays ? Number(newRuleMaxPlays) : null,
+                        podcast_feed_url: podcastFeedUrl ?? (podcastFailed && manualFeedUrl ? manualFeedUrl : null),
                       })
                     }}
                     disabled={!newRuleFavourite || !newRuleMode || (newRuleTriggerType === 'if_source_not' && newRuleFavourite !== '__continue__' && !newRuleSourceValue) || createRuleMutation.isPending}
