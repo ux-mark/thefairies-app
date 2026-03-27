@@ -12,7 +12,7 @@ import {
 } from 'chart.js'
 import { Bar, Line } from 'react-chartjs-2'
 import type { ChartOptions, ChartData } from 'chart.js'
-import { Activity } from 'lucide-react'
+import { Activity, Footprints } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ActivityInsights } from '@/lib/api'
 import { Accordion } from '@/components/ui/Accordion'
@@ -422,11 +422,18 @@ export default function ActivityCard({ activity, open, onToggle }: ActivityCardP
     .filter((r) => activeRooms.has(r.room))
     .reduce((sum, r) => sum + r.events24h, 0)
 
-  const trailingSummary = mostActiveRoom ? (
-    <span className="text-xs font-medium text-[var(--text-secondary)]">
-      {mostActiveRoom.room} · {mostActiveRoom.events24h} event{mostActiveRoom.events24h !== 1 ? 's' : ''}
+  const totalEvents = roomRanking.reduce((sum, r) => sum + r.events24h, 0)
+  const trailingSummary = (
+    <span className="inline-flex items-center gap-2">
+      <span className="inline-flex items-center gap-1 rounded-full bg-fairy-500/15 px-2 py-0.5 text-[11px] font-semibold text-fairy-400 tabular-nums">
+        <Footprints className="h-3 w-3" aria-hidden="true" />
+        {totalEvents.toLocaleString()}
+      </span>
+      {mostActiveRoom && (
+        <span className="text-xs text-[var(--text-secondary)]">{mostActiveRoom.room}</span>
+      )}
     </span>
-  ) : null
+  )
 
   return (
     <Accordion
