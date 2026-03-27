@@ -93,23 +93,20 @@ function ItemCard({ item, onDeactivate, onReactivate }: ItemCardProps) {
         {/* Action buttons below description — stay in the text column so the label never gets squeezed */}
         {item.deviceId !== null && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {/* Device link — only when a deviceId is present */}
-            {item.deviceId !== null && (
-              <Link
-                to={item.deviceSource === 'kasa'
-                  ? `/devices/kasa/${item.deviceId}`
-                  : `/devices/${item.deviceId}`}
-                aria-label={`View device: ${item.deviceLabel ?? 'device'}`}
-                className={cn(
-                  'text-sm text-fairy-400',
-                  'hover:bg-fairy-500/10 rounded-lg px-3 py-2',
-                  'min-h-[44px] flex items-center transition-colors',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                )}
-              >
-                View device
-              </Link>
-            )}
+            <Link
+              to={item.deviceSource === 'kasa'
+                ? `/devices/kasa/${item.deviceId}`
+                : `/devices/${item.deviceId}`}
+              aria-label={`View device: ${item.deviceLabel ?? 'device'}`}
+              className={cn(
+                'text-sm text-fairy-400',
+                'hover:bg-fairy-500/10 rounded-lg px-3 py-2',
+                'min-h-[44px] flex items-center transition-colors',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+              )}
+            >
+              View device
+            </Link>
 
             {/* Deactivate action for unreachable devices */}
             {item.action === 'deactivate' && item.deviceType && item.deviceId && (
