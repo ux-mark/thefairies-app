@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-03-27 — Progressive disclosure + activity charts + WCAG contrast fix (PR #61)
+- **Progressive disclosure**: All Insights page cards wrapped in Accordion with auto-open rules. Cards collapse by default when everything is fine; auto-open when anomalies, low batteries, or outliers detected.
+- **Activity charts** (from PR #60): computeActivityInsights backend, horizontal bar room ranking, multi-room area/line hourly pattern, stacked daily trend, room toggle pills with icons, footprints badge
+- **WCAG AA contrast**: fairy-400/fairy-500 accent colours now theme-aware CSS variables. Light mode uses darker greens (5.5:1 and 4.6:1 contrast). Fixes every green accent across the entire app globally.
+- **Accordion layout**: trailing content right-aligned between title and chevron. Title icon+text stay inline on mobile.
+- **EnvironmentCard**: room names now tappable links to room detail pages
+- **HomeSummaryStrip**: removed (redundant with accordion header summaries)
+- **Files**: 13 files changed (+897/-256)
+
+## 2026-03-27 — Activity insights with interactive charts (PR #60)
+- **Backend**: `computeActivityInsights()` in insights-engine.ts — room ranking, daily trend, hourly pattern (7-day average), per-room breakdowns (hourlyByRoom, dailyByRoom), room icons
+- **Frontend**: Rewrote ActivityCard with three chart types: horizontal bar (room ranking, per-room colours), multi-room area/line (hourly pattern), stacked bar (daily trend)
+- **Room toggles**: Interactive colour-coded pills with room icons — tap to show/hide rooms across all charts
+- **Data Journey Plan**: Updated Section 5 to require charts over lists for activity data
+- **Files**: server/src/lib/insights-engine.ts, client/src/components/dashboard/ActivityCard.tsx, client/src/lib/api.ts, .specs/DATA_JOURNEY_PLAN.md
+
 ## 2026-03-27 — Energy cost intelligence, visual indicators, Sonos-Kasa linking (PR #59)
 - **Backend energy cost** (WS1): Actual daily/monthly cost from Kasa device hardware memory (not projected). Per-room and per-device cost ranking. Monthly cost with month-over-month comparison. Daily over/under vs same day last week. Extended dashboard API and client types.
 - **Homepage visual indicators** (WS2): Dynamic lux icons (sun/cloud-sun/cloud-moon/moon) paired with lux number. Temperature with comfort-zone colouring. Footprints activity icon replacing dots. Single horizontal metadata row. Preserved PR #54 accordion MTA and scroll pills.
