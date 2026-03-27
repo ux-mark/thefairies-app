@@ -202,13 +202,19 @@ Every data point in Home Fairy exists to answer a question the user has -- or a 
 - `HomePage > WeatherCard` -- conditions, temp, humidity, wind
 - `DashboardPage > EnvironmentCard > OutdoorSection` -- temp, humidity, wind, description
 
-### 2.8 Sonos Playback State
+### 2.8 Sonos Energy Use
 
-**Source:** node-sonos-http-api via sonos-client
-**Tables:** `sonos_speakers` (configuration), `sonos_auto_play` (rules)
-**Historised:** No -- playback state is transient, not stored in device_history
+**Reframing:** Sonos data is best understood through the lens of "what does this cost me?" rather than playback state. The value comes from linking Sonos speakers to Kasa smart plugs via the `device_links` table and surfacing energy cost attribution.
 
-**Current display:** SonosDetail page, Sonos tab on Devices page, Music section in Settings
+**Source:** node-sonos-http-api via sonos-client (playback state); Kasa plugs via device_links (energy cost)
+**Tables:** `sonos_speakers` (configuration), `sonos_auto_play` (rules), `device_links` (speaker-to-plug associations)
+**Historised:** Playback state is transient. Energy data is historised via the linked Kasa plug's device_history entries.
+
+**Multi-speaker rooms:** A room can have multiple speakers (surround sound). The energy model must support multiple Kasa devices linked to speakers in the same room -- sum their linked plug costs to get the room's total Sonos energy use.
+
+**Current display:** SonosDetail page (with new "Power source" section showing linked plug energy cost), Sonos tab on Devices page, Music section in Settings
+
+**Drill-down path:** Room-level Sonos energy total → individual speaker detail → linked Kasa plug detail with full energy history charts
 
 ### 2.9 Mode Transitions
 
@@ -238,13 +244,15 @@ Every data point in Home Fairy exists to answer a question the user has -- or a 
 
 **What the user should see (vision):**
 
-The homepage stays focused on scenes and subway -- that is the primary task. But the environmental data on room cards should communicate through visual signals, not raw numbers.
+The homepage stays focused on scenes and subway -- that is the primary task. The environmental data on room cards should use iconography paired with the RIGHT numbers -- not all numbers, but the ones that are powerful and meaningful at a glance.
 
 **Room card environmental indicators:**
-- **Temperature:** A comfort colour tint on the temperature reading. Cool blue below 18 degrees, neutral for 18-24, warm amber above 24. The number stays, but colour tells the story at a glance.
-- **Lux:** Replace the raw lux number with a dynamic icon. Sun (bright/very bright), cloud-sun (moderate), cloud (dim), moon (dark). The icon changes based on the brightness thresholds already defined in `insights-engine.ts`. Tooltip shows actual lux value for those who want it.
-- **Activity:** A small presence indicator dot. Green when motion detected in the last few minutes, fading to grey as time passes. Replaces the verbose "last active" text with a visual signal.
-- **Energy cost badge:** Only appears when the room's energy cost today is above normal (>5% over baseline). Right-aligned, small, coloured using OverUnderBadge logic. Shows the percentage above normal, not an absolute number. If everything is normal, nothing shows -- silence is the success state.
+- **Temperature:** The number stays (people understand degrees) with comfort-zone colour tinting. Cool blue below 18 degrees, neutral green for 18-24, warm amber above 24, red above 28. Icon + number together.
+- **Lux:** The lux number stays, paired with a dynamic brightness icon. Sun (bright/very bright), cloud-sun (moderate), cloud (dim), moon (dark). The icon communicates the feeling; the number gives precision. Both together.
+- **Activity:** A small presence indicator dot (green/yellow/grey) paired with the relative time ("8m ago"). Visual signal + human-readable context together.
+- **Energy:** Show percentage of power usage with an appropriate icon -- not raw watts (which are meaningless to most users), but a contextual percentage that communicates whether this room is drawing more or less than usual. Currency symbol MUST always accompany any cost figure.
+- **Cost badge:** Only appears when the room's energy cost today is above normal (>5% over baseline). Right-aligned, small, coloured using OverUnderBadge logic. Shows the percentage above normal with the currency symbol (e.g., "↑18% · €1.42"). If everything is normal, nothing shows -- silence is the success state.
+- **Drill-down:** Every metric on the card is tappable. Temperature taps to room environment. Lux taps to room environment. Energy badge taps to room energy section. The homepage is a gateway, not a dead end.
 
 **HomeSummaryStrip enhancement:**
 The HomeSummaryStrip currently shows Temperature, Brightness, and Battery pills that scroll to the Insights page cards. This is a navigation aid, not homepage data. It should remain on the Insights page, not the homepage. The homepage does not need a summary strip -- room cards ARE the summary.
@@ -524,21 +532,25 @@ The frontend `ActivityInsights` type already exists in `client/src/lib/api.ts` (
 
 | Metric | Homepage (Level 1) | Room Detail (Level 2) | Insights Page (Level 3) | Device Detail (Level 4) |
 |--------|-------------------|----------------------|------------------------|------------------------|
-| **Energy cost** | Visual badge only -- appears on room card when cost is >5% above normal. Shows "up-arrow 18%" in amber/red. Nothing shown when normal. | "0.42 today so far -- about 13/month, 18% higher than last week" with OverUnderBadge | House total: "Your home costs 2.87 today -- projected 87/month, 12% more than last month." Room ranking table. Device ranking table. | "This device costs 4.50/month -- 8% of your total energy spend" |
-| **Power (W)** | Not shown | Room total: "87W total" with per-device breakdown (sorted by watts) | Total house watts in energy card header with OverUnderBadge. Anomaly list. | Full timeline with period selector. "Currently 45W -- average 38W, 18% above normal" |
-| **Temperature** | Number with comfort colour tint (cool/neutral/warm). No unit label clutter. | "21.3 degrees -- stable, 0.8 degrees warmer than house average." 24h chart with house average reference line. | House average + trend arrow + over/under badge. Room outlier cards. Multi-room overlay chart. | Sensor history chart. "Currently 21.3 degrees -- 30-day average: 20.8 degrees" |
-| **Lux** | Dynamic icon only (sun/cloud-sun/cloud/moon based on brightness level). Tooltip shows actual lux. | Number + brightness label: "142 lux -- moderate". | Room brightness ranking. Multi-room overlay chart. | Sensor history chart. |
+| **Energy cost** | % of power usage with icon + cost badge when above normal. Badge shows "↑18% · €1.42" (ALWAYS include currency symbol). Nothing shown when normal. | "€1.42 today so far -- about €43/month, 18% higher than last week" with OverUnderBadge. Tappable → per-device breakdown. | House total: "Your home costs €2.87 today -- projected €87/month, 12% more than last month (€78)." Room ranking table. Device ranking table. All tappable. | "This device costs €4.50/month -- 8% of your total energy spend." Full cost history chart. |
+| **Sonos energy** | Not shown on homepage | Room Sonos energy total (sum of linked plug costs). "Speakers in this room cost €3.20/month." | Sonos energy ranking by room. | Per-speaker cost via linked Kasa plug. Drill into plug history. Multi-speaker rooms sum all linked plugs. |
+| **Power (W)** | Not shown as raw number. Use % of usual instead. | Room total: "87W total" with per-device breakdown (sorted by watts). Tappable devices → device detail. | Total house watts in energy card header with OverUnderBadge. Anomaly list. Interactive chart -- toggle devices on/off. | Full timeline with period selector. "Currently 45W -- average 38W, 18% above normal." Toggle comparison overlays. |
+| **Temperature** | Number with comfort colour tint (cool/neutral/warm) + thermometer icon. Number stays -- people understand degrees. | "21.3°C -- stable, 0.8° warmer than house average." 24h chart with house average reference line. Chart toggles: show/hide rooms. | House average + trend arrow + over/under badge. Room outlier cards. Multi-room overlay chart with toggleable room lines. | Sensor history chart with period selector and comparison overlay. |
+| **Lux** | Number with dynamic brightness icon (sun/cloud-sun/cloud/moon). Number stays alongside icon. | Number + brightness label: "142 lux -- moderate". Chart with room comparison. | Room brightness ranking. Multi-room overlay chart with toggleable lines. | Sensor history chart. |
 | **Battery** | Not shown unless critical (then appears in critical alert banner at top) | Per-device bars with drain rate and predicted days remaining. | Fleet health summary. Urgency bands (attention/monitor/healthy). 30-day trend per device. | Full drain history chart. Drain rate computation. "0.8% per day -- about 84 days remaining" |
 | **Activity** | Presence dot on room card (green fading to grey based on recency) | "34 events today, most active 8-10am." Hourly bar chart. "12% more active than last week." | House-level daily trend. Room ranking. Most/quietest callouts. Available as overlay on energy charts. | Motion event log. Daily event count. Pattern analysis. |
 | **Weather** | Existing weather card (conditions, temp, humidity, wind) | Not shown separately (indoor/outdoor delta in insights engine) | Outdoor section in EnvironmentCard. Indoor/outdoor delta. Available as overlay on energy charts. | Not applicable |
 
 ### Formatting rules
 
-**Currency:**
-- Always use `pref_currency_symbol` from `current_state` table (default: `$`)
-- Daily values: 2 decimal places (e.g., "2.87")
-- Monthly values: nearest whole number when > 10, 2 decimal places when < 10 (e.g., "87" or "4.50")
-- Cost per device per month: 2 decimal places always
+**Currency (CRITICAL -- never omit):**
+- **ALWAYS** prefix cost values with `pref_currency_symbol` from `current_state` table (default: `€`)
+- Every cost figure in every context MUST show the symbol: "€2.87" not "2.87"
+- This applies to: headlines, badges, table cells, chart tooltips, narratives, empty state examples
+- Daily values: 2 decimal places (e.g., "€2.87")
+- Monthly values: nearest whole number when > 10, 2 decimal places when < 10 (e.g., "€87" or "€4.50")
+- Cost per device per month: 2 decimal places always (e.g., "€4.50/month")
+- Omitting the currency symbol is a bug. Agents must always use `formatCost()` utility which prepends the symbol.
 
 **Over/under badges (OverUnderBadge component):**
 - Within +/-5%: green, "Normal"
@@ -554,14 +566,28 @@ The frontend `ActivityInsights` type already exists in `client/src/lib/api.ts` (
 - > 7 days: date ("Mar 15")
 - Full datetime on hover/tooltip ("Tue 15 Mar, 14:32")
 
-**Charts:**
+**Charts (visual first, interactive where helpful):**
+- Charts and graphs are the PRIMARY way to present data — not tables, not numbers
 - Dark theme: consistent with app theme (`slate-900` background, `slate-400` ticks)
 - `GRID_COLOR = 'rgba(148, 163, 184, 0.15)'` (already standardised)
 - `TICK_COLOR = 'rgb(148, 163, 184)'` (already standardised)
 - Room colour palette: green, blue, amber, red, violet, pink (already defined in `EnvironmentCard.tsx` as `ROOM_PALETTE`)
-- Tooltips: dark background with light text, full timestamp, value with unit
+- Tooltips: dark background with light text, full timestamp, value with unit, ALWAYS include currency on cost tooltips
 - Responsive: `maintainAspectRatio: false`, container determines height
 - No animations (`animation: false`) for performance on Pi
+- **Interactive toggles:** On multi-line charts, let users tap legend items to show/hide individual data series. Chart.js supports this natively via legend onClick.
+- **Overlay toggles:** "Overlay activity" or "Overlay cost" buttons on charts let users cross-reference data types on the same timeline
+- **Period selectors:** 1d / 7d / 30d / 90d / 1y tabs on all detail-level charts. Custom range picker for power users.
+
+**Drill-down rules (MANDATORY):**
+- Every cumulative or aggregate metric MUST be tappable to its constituent data
+- Room-level cost → per-device cost breakdown
+- House-level energy chart → room-level charts → device-level charts
+- Room card metric → room detail page scrolled to relevant section
+- Device row in any table → device detail page
+- Room row in any table → room detail page
+- Chart data point → relevant detail view where feasible
+- If a high-level metric is a sum of lower-level data, the user must be able to reach the lower level in one tap
 
 **Empty states:**
 - Energy: "No power-monitoring devices detected. Smart plugs that report energy usage will appear here." (already exists)
