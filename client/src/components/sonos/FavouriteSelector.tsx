@@ -7,12 +7,22 @@ import type { SonosFavourite } from '@/lib/api'
 
 type ContentType = 'Radio' | 'Playlists' | 'Podcasts' | 'Audiobooks' | 'Albums' | 'Tracks' | 'Other'
 
-function getContentType(uri?: string): ContentType {
+function getContentType(fav: SonosFavourite): ContentType {
+  // Prefer UPnP content class from metadata (most reliable)
+  const cls = fav.contentClass?.toLowerCase() ?? ''
+  if (cls.includes('podcast')) return 'Podcasts'
+  if (cls.includes('audiobook')) return 'Audiobooks'
+  if (cls.includes('audiobroadcast')) return 'Radio'
+  if (cls.includes('playlistcontainer')) return 'Playlists'
+  if (cls.includes('musicalbum')) return 'Albums'
+  if (cls.includes('musictrack')) return 'Tracks'
+
+  // Fall back to URI pattern matching
+  const uri = fav.uri
   if (!uri) return 'Other'
 
   const decoded = decodeURIComponent(uri).toLowerCase()
 
-  // Spotify-specific classification
   if (decoded.includes('spotify')) {
     if (decoded.includes('episode') || decoded.includes('show')) return 'Podcasts'
     if (decoded.includes('audiobook')) return 'Audiobooks'
@@ -22,24 +32,19 @@ function getContentType(uri?: string): ContentType {
     return 'Other'
   }
 
-  // Sonos radio streams
   if (uri.startsWith('x-sonosapi-stream:') || uri.startsWith('x-rincon-stream:')) return 'Radio'
-
-  // Audiobook services (Audible uses HLS static streams)
-  if (uri.startsWith('x-sonosapi-hls-static:') || decoded.includes('audible')) return 'Audiobooks'
-
-  // Content containers (playlists, podcasts, audiobooks)
-  if (uri.startsWith('x-rincon-cpcontainer:')) {
-    if (decoded.includes('podcast') || decoded.includes('show') || decoded.includes('episode')) return 'Podcasts'
-    if (decoded.includes('audiobook')) return 'Audiobooks'
-    return 'Playlists'
-  }
-
-  // Generic keyword detection for other services (Apple Podcasts, Pocket Casts, etc.)
-  if (decoded.includes('podcast') || decoded.includes('episode')) return 'Podcasts'
-  if (decoded.includes('audiobook')) return 'Audiobooks'
+  if (uri.startsWith('x-sonosapi-hls-static:')) return 'Audiobooks'
+  if (uri.startsWith('x-rincon-cpcontainer:')) return 'Playlists'
 
   return 'Other'
+}
+
+/** Items with no URI and a generic container class are service bookmarks, not playable content */
+function isPlayable(fav: SonosFavourite): boolean {
+  if (fav.uri) return true
+  // Items with no URI but a specific content class (podcast, audiobook, etc.) are playable via title match
+  const cls = fav.contentClass ?? ''
+  return cls !== 'object.container' && cls !== ''
 }
 
 // ── Pill filter config ────────────────────────────────────────────────────────
@@ -83,7 +88,7 @@ export function FavouriteSelector({
     if (!value || value === '__continue__') return 'All'
     const fav = favourites.find(f => f.title === value)
     if (!fav) return 'All'
-    return getContentType(fav.uri)
+    return getContentType(fav)
   })
 
   useEffect(() => {
@@ -99,14 +104,14 @@ export function FavouriteSelector({
     })
   }, [])
 
-  // Exclude items with no URI — they're non-playable service bookmarks
-  const playableFavourites = useMemo(() => favourites.filter(f => f.uri), [favourites])
+  // Exclude generic service bookmarks (no URI + generic object.container class)
+  const playableFavourites = useMemo(() => favourites.filter(isPlayable), [favourites])
 
   // Determine which content types are present in the favourites list
   const presentTypes = useMemo<ContentType[]>(() => {
     const seen = new Set<ContentType>()
     for (const fav of playableFavourites) {
-      seen.add(getContentType(fav.uri))
+      seen.add(getContentType(fav))
     }
     return ALL_TYPES.filter(t => seen.has(t))
   }, [playableFavourites])
@@ -114,7 +119,7 @@ export function FavouriteSelector({
   // Filter the displayed favourites based on the selected pill
   const filteredFavourites = useMemo<SonosFavourite[]>(() => {
     if (selectedType === 'All') return playableFavourites
-    return playableFavourites.filter(f => getContentType(f.uri) === selectedType)
+    return playableFavourites.filter(f => getContentType(f) === selectedType)
   }, [playableFavourites, selectedType])
 
   // When the type pill changes, clear selection if the current value no longer
@@ -122,7 +127,7 @@ export function FavouriteSelector({
   function handleTypeChange(type: ContentType | 'All') {
     setSelectedType(type)
     if (value && value !== '__continue__') {
-      const next = type === 'All' ? favourites : favourites.filter(f => getContentType(f.uri) === type)
+      const next = type === 'All' ? favourites : favourites.filter(f => getContentType(f) === type)
       if (!next.some(f => f.title === value)) {
         onChange('')
       }
