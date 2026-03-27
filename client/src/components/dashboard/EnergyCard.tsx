@@ -223,7 +223,7 @@ interface DeviceBandProps {
   label: string
   items: PowerDevice[]
   maxWatts: number
-  anomalyMap: Map<number, EnergyInsights['deviceAnomalies'][number]>
+  anomalyMap: Map<number | string, EnergyInsights['deviceAnomalies'][number]>
   defaultOpen: boolean
   accentClass?: string
 }
