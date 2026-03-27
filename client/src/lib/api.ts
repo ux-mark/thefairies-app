@@ -659,6 +659,7 @@ export interface AutoPlayRule {
   trigger_value: string | null
   enabled: number
   max_plays: number | null
+  podcast_feed_url: string | null
 }
 
 export interface FollowMeStatus {
@@ -1096,6 +1097,11 @@ export const api = {
       }),
     deleteAutoPlayRule: (id: number) =>
       fetchApi<{ deleted: boolean }>('/sonos/auto-play/' + id, { method: 'DELETE' }),
+    resolvePodcast: (favouriteName: string) =>
+      fetchApi<{ isPodcast: boolean; feedUrl: string | null }>('/sonos/auto-play/resolve-podcast', {
+        method: 'POST',
+        body: JSON.stringify({ favourite_name: favouriteName }),
+      }),
     setVolume: (speaker: string, level: number) =>
       fetchApi<{ speaker: string; volume: number }>('/sonos/volume/' + encodeURIComponent(speaker), {
         method: 'PUT',

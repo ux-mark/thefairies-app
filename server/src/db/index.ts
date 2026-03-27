@@ -243,6 +243,9 @@ export function initDb(): void {
   if (!autoPlayColNames.includes('max_plays')) {
     db.exec('ALTER TABLE sonos_auto_play ADD COLUMN max_plays INTEGER DEFAULT NULL')
   }
+  if (!autoPlayColNames.includes('podcast_feed_url')) {
+    db.exec('ALTER TABLE sonos_auto_play ADD COLUMN podcast_feed_url TEXT DEFAULT NULL')
+  }
 
   // Add sonos columns to rooms table if they don't exist
   const roomCols = db.prepare("PRAGMA table_info('rooms')").all() as { name: string }[]
