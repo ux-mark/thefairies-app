@@ -108,6 +108,9 @@ export const deviceHealthService = {
         severity: 'info',
         category: 'device_online',
         dedupKey: `device_online:${deviceType}:${deviceId}`,
+        sourceType: deviceType,
+        sourceId: deviceId,
+        sourceLabel: label,
       })
     }
   },
@@ -157,6 +160,9 @@ export const deviceHealthService = {
           severity: 'warning',
           category: 'device_unreachable',
           dedupKey: `device_unreachable:${deviceType}:${deviceId}`,
+          sourceType: deviceType,
+          sourceId: deviceId,
+          sourceLabel: label,
         })
       }
     })()
