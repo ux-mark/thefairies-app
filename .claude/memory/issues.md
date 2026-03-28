@@ -532,6 +532,29 @@ The following issues were discovered during a comprehensive technical and UX aud
 - **Description**: Several room/mode selectors use native HTML `<select>` elements which cannot render icons in `<option>` tags. These include: LightDetailPage room dropdown, SonosSetupPage room dropdown, MusicSection room dropdown. A future enhancement could replace these with custom accessible dropdown components (e.g., Radix Select) to support icon rendering. Low priority — the text-only selectors work fine functionally.
 - **Files**: `client/src/pages/LightDetailPage.tsx`, `client/src/pages/SonosSetupPage.tsx`, `client/src/components/settings/MusicSection.tsx`
 
+## 2026-03-27 — Kasa parent strip all-off bypasses per-outlet exclusions
+- **Severity**: high
+- **Status**: resolved (2026-03-27, PR #63)
+- **Category**: reliability
+- **Description**: `runAllOff()` sent 'off' to parent Kasa strips (kasa_strip type), which kills ALL outlets via python-kasa's `SmartStrip.turn_off()` — bypassing per-outlet `exclude_from_all_off` flags. Sonos Bedroom and WFH WiFi had exclusions set but were still turned off by Nighttime/All Off.
+- **Fix**: Skip parent strips in `runAllOff()`, only control child outlets individually.
+- **Files**: `server/src/routes/system.ts`
+
+## 2026-03-27 — WFH scene used stale Hubitat device IDs (404 errors)
+- **Severity**: high
+- **Status**: resolved (2026-03-27, PR #63)
+- **Category**: data-integrity
+- **Description**: WFH scene commands still referenced `hubitat_device` type with old Hubitat device IDs (1288, 1292, etc.) that no longer exist since migration to Kasa sidecar. Scene activation produced 404 errors and failed to turn on any outlets.
+- **Fix**: Idempotent DB migration replaces commands with `kasa_device` type using correct MAC-based outlet IDs.
+- **Files**: `server/src/db/index.ts`
+
+## 2026-03-27 — Bedroom motion sensor intermittently unassigned
+- **Severity**: medium
+- **Status**: monitoring
+- **Category**: reliability
+- **Description**: Bedroom motion sensor was "not assigned to any room" from 05:51 to 13:21 despite the `device_rooms` row existing. Correlated with 55+ server restarts from agent build activity. Likely WAL/locking issue from concurrent database access. Resolved itself once restarts settled. Monitor for recurrence.
+- **Files**: `server/src/lib/motion-handler.ts`, `server/src/db/index.ts`
+
 ## 2026-03-27 — Separate Fairy and Twinkly devices from hub_devices
 - **Severity**: enhancement
 - **Status**: planned
