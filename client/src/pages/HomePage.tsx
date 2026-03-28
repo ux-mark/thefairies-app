@@ -949,17 +949,6 @@ export default function HomePage() {
       {/* Device onboarding always renders first */}
       <DeviceOnboarding />
 
-      {/* Customise button */}
-      <div className="mb-4 flex justify-end">
-        <button
-          onClick={() => setSectionEditorOpen(true)}
-          className="flex items-center gap-1.5 text-xs text-caption hover:text-body transition-colors min-h-[44px]"
-        >
-          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-          Customise
-        </button>
-      </div>
-
       {/* Sections rendered in user-defined order */}
       {sectionOrder
         .filter(s => s.visible || s.id === 'rooms')
@@ -1010,6 +999,17 @@ export default function HomePage() {
           elements.push(renderSection(section.id))
           return <Fragment key={section.id}>{elements}</Fragment>
         })}
+
+      {/* Customise button */}
+      <div className="mt-8 mb-2 flex justify-center">
+        <button
+          onClick={() => setSectionEditorOpen(true)}
+          className="flex items-center gap-1.5 text-xs text-caption hover:text-body transition-colors min-h-[44px]"
+        >
+          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          Customise home screen
+        </button>
+      </div>
 
       <RoomReorderOverlay
         rooms={rooms ?? []}
