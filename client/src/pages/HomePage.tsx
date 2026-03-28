@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, Lock, AlertTriangle, ChevronRight, ArrowUp, ArrowDown, Activity, Loader2, Volume2, VolumeX, Footprints } from 'lucide-react'
+import { Thermometer, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, Lock, AlertTriangle, ChevronRight, ArrowUp, ArrowDown, Activity, Loader2, Volume2, VolumeX, Footprints, Settings2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { api } from '@/lib/api'
@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { LucideIcon } from '@/components/ui/LucideIcon'
 import { Accordion } from '@/components/ui/Accordion'
 import { Skeleton, SkeletonGrid } from '@/components/ui/Skeleton'
+import RoomReorderOverlay from '@/components/RoomReorderOverlay'
 
 // ── Visual state helpers ──────────────────────────────────────────────────────
 
@@ -680,6 +681,7 @@ function MusicQuickAction() {
 export default function HomePage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const [reorderOpen, setReorderOpen] = useState(false)
 
   const { data: rooms, isLoading: roomsLoading, isError: roomsError, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms'],
@@ -878,9 +880,19 @@ export default function HomePage() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-heading text-sm font-semibold">Rooms</h2>
           {rooms && (
-            <span className="text-caption text-xs">
-              {rooms.length} room{rooms.length !== 1 ? 's' : ''}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-caption text-xs">
+                {rooms.length} room{rooms.length !== 1 ? 's' : ''}
+              </span>
+              <button
+                onClick={() => setReorderOpen(true)}
+                className="flex items-center gap-1 text-xs text-fairy-400 hover:text-fairy-300 transition-colors min-h-[44px] min-w-[44px] justify-center"
+                aria-label="Reorder rooms"
+              >
+                <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
+                Edit
+              </button>
+            </div>
           )}
         </div>
 
@@ -930,6 +942,12 @@ export default function HomePage() {
           />
         )}
       </section>
+
+      <RoomReorderOverlay
+        rooms={rooms ?? []}
+        open={reorderOpen}
+        onClose={() => setReorderOpen(false)}
+      />
     </div>
   )
 }
