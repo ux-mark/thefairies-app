@@ -400,7 +400,7 @@ export default function ScenesPage() {
 
   // ---- By room data -------------------------------------------------------
 
-  // Unique room names across all scenes, sorted alphabetically
+  // Unique room names across all scenes, sorted by display order
   const allRoomNames = useMemo(() => {
     if (!scenes) return []
     const nameSet = new Set<string>()
@@ -409,8 +409,13 @@ export default function ScenesPage() {
         if (r?.name) nameSet.add(r.name)
       }
     }
-    return Array.from(nameSet).sort()
-  }, [scenes])
+    const names = Array.from(nameSet)
+    if (rooms) {
+      const orderMap = new Map(rooms.map(r => [r.name, r.display_order]))
+      names.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999))
+    }
+    return names
+  }, [scenes, rooms])
 
   // When search is active, auto-expand rooms that have matching scenes
   const computedOpenRooms = useMemo(() => {

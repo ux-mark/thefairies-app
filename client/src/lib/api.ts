@@ -781,6 +781,8 @@ export const api = {
       fetchApi<unknown>('/rooms/' + encodeURIComponent(name), {
         method: 'DELETE',
       }),
+    reorder: (items: Array<{name: string; display_order: number}>) =>
+      fetchApi<Room[]>('/rooms/reorder', { method: 'PUT', body: JSON.stringify(items) }),
   },
   scenes: {
     getAll: () => fetchApi<Scene[]>('/scenes'),
