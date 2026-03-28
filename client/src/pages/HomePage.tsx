@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Thermometer, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, Lock, AlertTriangle, ChevronRight, ArrowUp, ArrowDown, Activity, Loader2, Volume2, VolumeX, Footprints, Settings2 } from 'lucide-react'
+import { Thermometer, Zap, Cloud, Droplets, Wind, Power, Moon, Users, Train, Lock, AlertTriangle, ChevronRight, ArrowUp, ArrowDown, Activity, Loader2, Volume2, VolumeX, Footprints, Settings2, Pencil } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
@@ -13,6 +13,7 @@ import { LucideIcon } from '@/components/ui/LucideIcon'
 import { Accordion } from '@/components/ui/Accordion'
 import { Skeleton, SkeletonGrid } from '@/components/ui/Skeleton'
 import RoomReorderOverlay from '@/components/RoomReorderOverlay'
+import HomeSectionEditor, { DEFAULT_SECTION_ORDER, type SectionOrderItem } from '@/components/HomeSectionEditor'
 
 // ── Visual state helpers ──────────────────────────────────────────────────────
 
@@ -682,6 +683,7 @@ export default function HomePage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [reorderOpen, setReorderOpen] = useState(false)
+  const [sectionEditorOpen, setSectionEditorOpen] = useState(false)
 
   const { data: rooms, isLoading: roomsLoading, isError: roomsError, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms'],
@@ -715,6 +717,28 @@ export default function HomePage() {
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
+
+  const { data: prefs } = useQuery({
+    queryKey: ['system', 'preferences'],
+    queryFn: api.system.getPreferences,
+  })
+
+  // Parse the stored section order, filling in any sections added after the pref was saved
+  const sectionOrder = useMemo<SectionOrderItem[]>(() => {
+    const raw = prefs?.homepage_section_order
+    if (!raw) return DEFAULT_SECTION_ORDER
+    try {
+      const parsed = JSON.parse(raw) as SectionOrderItem[]
+      const knownIds = DEFAULT_SECTION_ORDER.map(s => s.id)
+      const result = parsed.filter(s => knownIds.includes(s.id))
+      for (const def of DEFAULT_SECTION_ORDER) {
+        if (!result.find(s => s.id === def.id)) result.push({ ...def })
+      }
+      return result
+    } catch {
+      return DEFAULT_SECTION_ORDER
+    }
+  }, [prefs?.homepage_section_order])
 
   const unlockMutation = useMutation({
     mutationFn: api.system.unlockNight,
@@ -814,139 +838,187 @@ export default function HomePage() {
   const allModes = system?.all_modes ?? [...DEFAULT_MODES]
   const modeIcons = system?.mode_icons ?? {}
 
-  return (
-    <div>
-      <DeviceOnboarding />
-
-      <MtaCard />
-
-      <QuickActions />
-
-      <MusicQuickAction />
-
-      {nightStatus?.active && (
-        <div className="card mb-6 rounded-xl border border-indigo-500/30 bg-indigo-500/5 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Moon className="h-5 w-5 text-indigo-400 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-heading text-sm font-medium">Night mode active</p>
-              <p className="text-caption text-xs">
-                {nightStatus.lockedRooms.length} room{nightStatus.lockedRooms.length !== 1 ? 's' : ''} locked until {nightStatus.wakeMode}
-              </p>
-            </div>
-            <button
-              onClick={() => unlockMutation.mutate()}
-              disabled={unlockMutation.isPending}
-              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50"
-            >
-              Unlock
-            </button>
-          </div>
-        </div>
-      )}
-
-      <WeatherCard />
-
-      {systemLoading ? (
-        <div className="mb-6 flex gap-2 overflow-hidden" role="status" aria-label="Loading mode selector">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-24 shrink-0 rounded-full" />
-          ))}
-        </div>
-      ) : (
-        <ModeSelector
-          currentMode={currentMode}
-          modes={allModes}
-          modeIcons={modeIcons}
-          onSelect={mode => setModeMutation.mutate(mode)}
-          isPending={setModeMutation.isPending}
-        />
-      )}
-
-      {dashboardData?.insights?.attention?.some(a => a.severity === 'critical') && (
-        <Link
-          to="/dashboard"
-          className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 transition-colors hover:bg-red-500/10 min-h-[44px]"
-        >
-          <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" aria-hidden="true" />
-          <span className="text-sm text-red-400">
-            {dashboardData.insights.attention.filter(a => a.severity === 'critical').length} item{dashboardData.insights.attention.filter(a => a.severity === 'critical').length !== 1 ? 's' : ''} need{dashboardData.insights.attention.filter(a => a.severity === 'critical').length === 1 ? 's' : ''} attention
-          </span>
-          <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-red-400 opacity-50" aria-hidden="true" />
-        </Link>
-      )}
-
-      <section aria-label="Rooms">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-heading text-sm font-semibold">Rooms</h2>
-          {rooms && (
-            <div className="flex items-center gap-2">
-              <span className="text-caption text-xs">
-                {rooms.length} room{rooms.length !== 1 ? 's' : ''}
-              </span>
-              <button
-                onClick={() => setReorderOpen(true)}
-                className="flex items-center gap-1 text-xs text-fairy-400 hover:text-fairy-300 transition-colors min-h-[44px] min-w-[44px] justify-center"
-                aria-label="Reorder rooms"
-              >
-                <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
-                Edit
-              </button>
-            </div>
-          )}
-        </div>
-
-        {roomsLoading ? (
-          <div role="status" aria-label="Loading rooms">
-            <SkeletonGrid count={6} />
-          </div>
-        ) : roomsError ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <AlertTriangle className="h-8 w-8 text-amber-400" aria-hidden="true" />
-            <p className="text-zinc-400">Unable to load home data. Check your connection and try again.</p>
-            <button
-              onClick={() => refetchRooms()}
-              className="rounded-lg bg-fairy-600 px-4 py-2 min-h-[44px] text-sm font-medium text-white hover:bg-fairy-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-            >
-              Try again
-            </button>
-          </div>
-        ) : rooms && rooms.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {rooms
-              .sort((a, b) => a.display_order - b.display_order)
-              .map(room => (
-                <RoomCard
-                  key={room.name}
-                  room={room}
-                  scenes={scenes ?? []}
-                  currentMode={currentMode}
-                  defaultScenes={defaultScenes}
-                  onToggleScene={(name, isActive) =>
-                    isActive
-                      ? deactivateSceneMutation.mutate(name)
-                      : activateSceneMutation.mutate(name)
-                  }
-                  onToggleAuto={() =>
-                    toggleAutoMutation.mutate({ name: room.name, auto: !room.auto })
-                  }
-                  isLocked={nightStatus?.lockedRooms.includes(room.name)}
-                />
-              ))}
+  // Render a single section by ID
+  function renderSection(id: string): React.ReactNode {
+    switch (id) {
+      case 'mta':
+        return <MtaCard key="mta" />
+      case 'quick-actions':
+        return <QuickActions key="quick-actions" />
+      case 'music':
+        return <MusicQuickAction key="music" />
+      case 'weather':
+        return <WeatherCard key="weather" />
+      case 'mode-selector':
+        return systemLoading ? (
+          <div key="mode-selector" className="mb-6 flex gap-2 overflow-hidden" role="status" aria-label="Loading mode selector">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-24 shrink-0 rounded-full" />
+            ))}
           </div>
         ) : (
-          <EmptyState
-            icon={Zap}
-            message="No rooms set up yet."
-            sub="Head to the Rooms tab to get started."
+          <ModeSelector
+            key="mode-selector"
+            currentMode={currentMode}
+            modes={allModes}
+            modeIcons={modeIcons}
+            onSelect={mode => setModeMutation.mutate(mode)}
+            isPending={setModeMutation.isPending}
           />
-        )}
-      </section>
+        )
+      case 'rooms':
+        return (
+          <section key="rooms" aria-label="Rooms">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-heading text-sm font-semibold">Rooms</h2>
+              {rooms && (
+                <div className="flex items-center gap-2">
+                  <span className="text-caption text-xs">
+                    {rooms.length} room{rooms.length !== 1 ? 's' : ''}
+                  </span>
+                  <button
+                    onClick={() => setReorderOpen(true)}
+                    className="flex items-center gap-1 text-xs text-fairy-400 hover:text-fairy-300 transition-colors min-h-[44px] min-w-[44px] justify-center"
+                    aria-label="Reorder rooms"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {roomsLoading ? (
+              <div role="status" aria-label="Loading rooms">
+                <SkeletonGrid count={6} />
+              </div>
+            ) : roomsError ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <AlertTriangle className="h-8 w-8 text-amber-400" aria-hidden="true" />
+                <p className="text-zinc-400">Unable to load home data. Check your connection and try again.</p>
+                <button
+                  onClick={() => refetchRooms()}
+                  className="rounded-lg bg-fairy-600 px-4 py-2 min-h-[44px] text-sm font-medium text-white hover:bg-fairy-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : rooms && rooms.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {rooms
+                  .sort((a, b) => a.display_order - b.display_order)
+                  .map(room => (
+                    <RoomCard
+                      key={room.name}
+                      room={room}
+                      scenes={scenes ?? []}
+                      currentMode={currentMode}
+                      defaultScenes={defaultScenes}
+                      onToggleScene={(name, isActive) =>
+                        isActive
+                          ? deactivateSceneMutation.mutate(name)
+                          : activateSceneMutation.mutate(name)
+                      }
+                      onToggleAuto={() =>
+                        toggleAutoMutation.mutate({ name: room.name, auto: !room.auto })
+                      }
+                      isLocked={nightStatus?.lockedRooms.includes(room.name)}
+                    />
+                  ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Zap}
+                message="No rooms set up yet."
+                sub="Head to the Rooms tab to get started."
+              />
+            )}
+          </section>
+        )
+      default:
+        return null
+    }
+  }
+
+  const hasAttention = dashboardData?.insights?.attention?.some(a => a.severity === 'critical') ?? false
+  const criticalCount = dashboardData?.insights?.attention?.filter(a => a.severity === 'critical').length ?? 0
+
+  return (
+    <div>
+      {/* Device onboarding always renders first */}
+      <DeviceOnboarding />
+
+      {/* Customise button */}
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={() => setSectionEditorOpen(true)}
+          className="flex items-center gap-1.5 text-xs text-caption hover:text-body transition-colors min-h-[44px]"
+        >
+          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          Customise
+        </button>
+      </div>
+
+      {/* Sections rendered in user-defined order */}
+      {sectionOrder
+        .filter(s => s.visible || s.id === 'rooms')
+        .map(section => {
+          const elements: React.ReactNode[] = []
+
+          // System alerts always inject before the rooms section
+          if (section.id === 'rooms') {
+            if (nightStatus?.active) {
+              elements.push(
+                <div key="night-alert" className="card mb-6 rounded-xl border border-indigo-500/30 bg-indigo-500/5 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <Moon className="h-5 w-5 text-indigo-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-heading text-sm font-medium">Night mode active</p>
+                      <p className="text-caption text-xs">
+                        {nightStatus.lockedRooms.length} room{nightStatus.lockedRooms.length !== 1 ? 's' : ''} locked until {nightStatus.wakeMode}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => unlockMutation.mutate()}
+                      disabled={unlockMutation.isPending}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50"
+                    >
+                      Unlock
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+            if (hasAttention) {
+              elements.push(
+                <Link
+                  key="attention-alert"
+                  to="/dashboard"
+                  className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 transition-colors hover:bg-red-500/10 min-h-[44px]"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" aria-hidden="true" />
+                  <span className="text-sm text-red-400">
+                    {criticalCount} item{criticalCount !== 1 ? 's' : ''} need{criticalCount === 1 ? 's' : ''} attention
+                  </span>
+                  <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-red-400 opacity-50" aria-hidden="true" />
+                </Link>
+              )
+            }
+          }
+
+          elements.push(renderSection(section.id))
+          return <Fragment key={section.id}>{elements}</Fragment>
+        })}
 
       <RoomReorderOverlay
         rooms={rooms ?? []}
         open={reorderOpen}
         onClose={() => setReorderOpen(false)}
+      />
+
+      <HomeSectionEditor
+        open={sectionEditorOpen}
+        onClose={() => setSectionEditorOpen(false)}
       />
     </div>
   )
