@@ -55,9 +55,9 @@ function SortableRoomCard({ room }: SortableRoomCardProps) {
   return (
     <li
       ref={setNodeRef}
-      style={style}
+      style={{ ...style, background: 'var(--bg-tertiary)', borderColor: 'var(--border-secondary)' }}
       className={[
-        'flex items-center gap-3 rounded-lg border border-[var(--border-primary)] bg-slate-800/80 px-3 py-2.5 select-none',
+        'flex items-center gap-3 rounded-lg border px-3 py-2.5 select-none',
         isDragging
           ? 'scale-[1.02] shadow-lg shadow-black/40 opacity-95 z-10 relative'
           : 'shadow-sm',
@@ -125,7 +125,7 @@ function RoomReorderContent({
   return (
     <>
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-primary)] px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: 'var(--border-secondary)' }}>
         <button
           ref={firstFocusRef}
           onClick={onCancel}
@@ -278,12 +278,12 @@ export default function RoomReorderOverlay({ rooms, open, onClose }: RoomReorder
         aria-modal="true"
         aria-label="Reorder rooms"
         className={[
-          'fixed inset-x-0 bottom-0 z-50 flex flex-col bg-slate-900 transition-transform duration-300 ease-out',
+          'fixed inset-x-0 bottom-0 z-50 flex flex-col transition-transform duration-300 ease-out',
           // Respect the bottom nav bar (~64px) and limit height to usable viewport
           'max-h-[calc(100dvh-4rem)]',
           open ? 'translate-y-0' : 'translate-y-full',
         ].join(' ')}
-        style={{ borderRadius: '1rem 1rem 0 0' }}
+        style={{ borderRadius: '1rem 1rem 0 0', background: 'var(--bg-secondary)' }}
       >
         <RoomReorderContent
           key={sessionKey}
