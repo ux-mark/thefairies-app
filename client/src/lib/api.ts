@@ -340,12 +340,13 @@ export interface BatteryDevice {
 }
 
 export interface PowerDevice {
-  id: number
+  id: string | number
   label: string
   room_name: string | null
   power: number
   energy: number | null
   switch: 'on' | 'off'
+  source: 'hub' | 'kasa'
 }
 
 export interface DashboardSummary {
@@ -394,7 +395,7 @@ export interface RoomIntelligenceData {
   temperatureHistory: Array<{ value: number; recorded_at: string }>
   totalWatts: number
   devices: Array<{
-    id: number; label: string; device_type: string
+    id: string; label: string; device_type: string; source: 'hub' | 'kasa'
     power: number; energy: number | null; battery: number | null
   }>
   events24h: number
@@ -428,7 +429,7 @@ export interface DeviceInsightsData {
       avgTemp30d: number | null
     } | null
   }
-  roomDevices: Array<{ id: number; label: string; device_type: string }>
+  roomDevices: Array<{ id: string; label: string; device_type: string; source: 'hub' | 'kasa' }>
   currencySymbol: string
 }
 

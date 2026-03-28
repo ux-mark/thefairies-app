@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { RoomIntelligenceData } from '@/lib/api'
-import { cn, formatCost, formatMonthlyCost } from '@/lib/utils'
+import { cn, formatCost, formatMonthlyCost, deviceDetailPath } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
 import { Accordion } from '@/components/ui/Accordion'
 import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
@@ -189,7 +189,7 @@ function EnergyRow({ data, currencySymbol }: EnergyRowProps) {
             {devicesWithCost.map(device => (
               <li key={device.id} className="flex items-center justify-between gap-2 text-sm">
                 <Link
-                  to={`/devices/${device.id}`}
+                  to={deviceDetailPath(device.id, device.source)}
                   className="text-fairy-400 hover:text-fairy-300 hover:underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500 break-words"
                 >
                   {device.label}
