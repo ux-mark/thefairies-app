@@ -208,7 +208,7 @@ Every device type has a dedicated detail route. Links to devices must use the co
 - Hubitat webhook: http://192.168.10.201:3001/hubitat
 
 ## GitHub
-Repository: https://github.com/ux-mark/thefairies-app
+Repository: https://github.com/ux-mark/home-fairy
 
 ## Known Constraints
 - @playwright/test is installed in `client/` (run playwright commands from `client/` or ensure the binary is accessible)
