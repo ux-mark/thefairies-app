@@ -110,6 +110,35 @@ router.get('/default-scenes', (_req: Request, res: Response) => {
   }
 })
 
+// PUT /reorder — bulk update display_order for all rooms
+router.put('/reorder', (req: Request, res: Response) => {
+  try {
+    const schema = z.array(z.object({
+      name: z.string(),
+      display_order: z.number(),
+    }))
+    const items = schema.parse(req.body)
+
+    const stmt = db.prepare('UPDATE rooms SET display_order = ?, updated_at = datetime(\'now\') WHERE name = ?')
+    const transaction = db.transaction((items: Array<{name: string; display_order: number}>) => {
+      for (const item of items) {
+        stmt.run(item.display_order, item.name)
+      }
+    })
+    transaction(items)
+
+    const rows = getAll<RoomRow>('SELECT * FROM rooms ORDER BY display_order')
+    res.json(rows.map(parseRoom))
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: err.errors })
+      return
+    }
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: IS_PRODUCTION ? 'Internal server error' : msg })
+  }
+})
+
 // GET / — list all rooms
 router.get('/', (_req: Request, res: Response) => {
   try {
