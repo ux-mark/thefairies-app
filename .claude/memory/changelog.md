@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-03-28 — Comprehensive product audit (5 parallel reviews)
+- **Feature documentation**: Populated `.specs/features.md` with complete 14-section feature inventory (was completely empty despite 68 PRs)
+- **Issues documented**: 40+ new issues across 5 categories in `.claude/memory/issues.md`
+  - Backend: 1 critical (missing `active` column DDL), 2 high, 4 medium, 4 low
+  - Frontend: 2 high (redundant socket connections), 3 medium, 3 low
+  - UX/Accessibility: 1 high (unlabelled switch), 7 medium, 3 low
+  - Logging/Observability: 1 high (no latency tracking), 4 medium, 6 low
+- **Audit scope**: Every file in server/src/, client/src/, Python sidecar, PM2 config, deploy script
+- **Files**: `.specs/features.md`, `.claude/memory/issues.md`, `.claude/memory/changelog.md`
+
 ## 2026-03-27 — Progressive disclosure + activity charts + WCAG contrast fix (PR #61)
 - **Progressive disclosure**: All Insights page cards wrapped in Accordion with auto-open rules. Cards collapse by default when everything is fine; auto-open when anomalies, low batteries, or outliers detected.
 - **Activity charts** (from PR #60): computeActivityInsights backend, horizontal bar room ranking, multi-room area/line hourly pattern, stacked daily trend, room toggle pills with icons, footprints badge

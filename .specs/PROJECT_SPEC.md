@@ -1,7 +1,7 @@
 # Project Spec
 
 ## Overview
-The Fairies v3 — a home automation control system with a React frontend and Express backend. Controls LIFX lights, Kasa smart plugs/strips (via python-kasa sidecar), Hubitat sensors, Twinkly decorative lights, fairy (ESP8266) devices, and Sonos speakers (via node-sonos-http-api). Includes MTA subway tracking, weather indicators, energy monitoring, motion-based scene automation, and follow-me music.
+Home Fairy is a home automation control system with a React frontend and Express backend. Controls LIFX lights, Kasa smart plugs/strips (via python-kasa sidecar), Hubitat sensors, Twinkly decorative lights, fairy (ESP8266) devices, and Sonos speakers (via node-sonos-http-api). Includes MTA subway tracking, weather indicators, energy monitoring, motion-based scene automation, and follow-me music.
 
 ## Tech Stack
 - **Language**: TypeScript (frontend and backend)
@@ -16,7 +16,7 @@ The Fairies v3 — a home automation control system with a React frontend and Ex
 
 ## Project Structure
 ```
-thefairies-app/
+home-fairy/
 ├── client/          React + Vite + TypeScript + Tailwind CSS v4
 │   ├── src/
 │   │   ├── pages/          Home, Dashboard, Rooms, RoomDetail, Scenes, SceneEditor, Devices, DeviceDetail, Settings, Watch, Logs, SonosSetup, SonosDetail
