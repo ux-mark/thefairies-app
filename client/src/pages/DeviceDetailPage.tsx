@@ -3,7 +3,7 @@ import { useParams, useMatch, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Pencil, Check, X, Power, Shield, AlertTriangle, Link2, Volume2 } from 'lucide-react'
 import { api, type DeviceInsightsData, type KasaDevice, type DeviceLink } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, deviceDetailPath } from '@/lib/utils'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
 import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
 import { BackLink } from '@/components/ui/BackLink'
@@ -1575,7 +1575,7 @@ function HubDeviceDetail({ id }: { id: string }) {
                     {roomDevices.map(d => (
                       <li key={d.id}>
                         <Link
-                          to={`/devices/${d.id}`}
+                          to={deviceDetailPath(d.id, d.source)}
                           className={cn(
                             'flex min-h-[44px] items-center gap-2 rounded-lg px-2 -mx-2',
                             'text-sm text-fairy-400 transition-colors hover:bg-fairy-500/10',

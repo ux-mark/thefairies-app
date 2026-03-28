@@ -3,7 +3,7 @@ import { Zap, ChevronDown } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { cn, formatCost } from '@/lib/utils'
+import { cn, formatCost, deviceDetailPath } from '@/lib/utils'
 import { Accordion } from '@/components/ui/Accordion'
 import TimeSeriesChart from '@/components/dashboard/TimeSeriesChart'
 import OverUnderBadge from '@/components/dashboard/OverUnderBadge'
@@ -103,7 +103,7 @@ function DeviceRow({ device, maxWatts, anomaly }: DeviceRowProps) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium leading-snug">
             <Link
-              to={'/devices/' + device.id}
+              to={deviceDetailPath(device.id, device.source)}
               className="text-fairy-400 hover:underline"
               onClick={e => e.stopPropagation()}
             >
@@ -326,7 +326,7 @@ function DeviceCostRanking({ items, currencySymbol }: DeviceCostRankingProps) {
           <tr key={item.deviceId}>
             <td className="py-1.5 pr-2">
               <Link
-                to={`/devices/${item.deviceId}`}
+                to={deviceDetailPath(item.deviceId, 'kasa')}
                 className="text-fairy-400 hover:text-fairy-300 hover:underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
               >
                 {item.label}
