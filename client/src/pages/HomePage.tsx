@@ -11,6 +11,7 @@ import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LucideIcon } from '@/components/ui/LucideIcon'
 import { Accordion } from '@/components/ui/Accordion'
+import { Skeleton, SkeletonGrid } from '@/components/ui/Skeleton'
 
 // ── Visual state helpers ──────────────────────────────────────────────────────
 
@@ -36,23 +37,6 @@ function getActivityColor(lastActive: string | null): string {
   if (minutesAgo < 5) return 'text-slate-700 dark:text-slate-300'
   if (minutesAgo < 30) return 'text-slate-600 dark:text-slate-400'
   return 'text-slate-500 dark:text-slate-400'
-}
-
-// ── Skeleton loader ──────────────────────────────────────────────────────────
-
-function RoomCardSkeleton() {
-  return (
-    <div className="card rounded-xl border p-4">
-      <div className="animate-pulse space-y-3">
-        <div className="surface h-5 w-28 rounded" />
-        <div className="surface h-4 w-20 rounded" />
-        <div className="flex gap-2">
-          <div className="surface h-8 w-16 rounded-lg" />
-          <div className="surface h-8 w-16 rounded-lg" />
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // ── Mode selector ────────────────────────────────────────────────────────────
@@ -865,10 +849,22 @@ export default function HomePage() {
         </div>
 
         {roomsLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <RoomCardSkeleton key={i} />
-            ))}
+          <div role="status" aria-label="Loading home">
+            <div className="mb-6">
+              <div className="mb-3 flex gap-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-24 rounded-full" />
+                ))}
+              </div>
+              <div className="mb-6 flex gap-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-28 rounded-xl" />
+                ))}
+              </div>
+              <Skeleton className="mb-4 h-16 w-full rounded-xl" />
+              <Skeleton className="mb-6 h-16 w-full rounded-xl" />
+            </div>
+            <SkeletonGrid count={6} />
           </div>
         ) : roomsError ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
