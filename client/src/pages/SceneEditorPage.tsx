@@ -432,6 +432,7 @@ function OptionToggle({
           <p className="text-xs text-caption">{description}</p>
         </div>
         <Switch.Root
+          aria-label={label}
           checked={enabled}
           onCheckedChange={onToggle}
           className={cn(
@@ -1225,6 +1226,7 @@ export default function SceneEditorPage() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-caption" />
                 <input
                   type="search"
+                  aria-label="Search lights by name"
                   placeholder="Search lights by name..."
                   value={lightSearch}
                   onChange={e => setLightSearch(e.target.value)}

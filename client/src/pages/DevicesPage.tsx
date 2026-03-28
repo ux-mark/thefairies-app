@@ -331,7 +331,7 @@ function HubDeviceCard({ device, rooms }: { device: UnifiedDevice; rooms?: Room[
           <button
             onClick={() => setExpanded(!expanded)}
             className="text-caption flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors hover:text-[var(--text-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-            aria-label={expanded ? 'Collapse' : 'Expand'}
+            aria-label={expanded ? `Collapse ${device.label} controls` : `Expand ${device.label} controls`}
           >
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
