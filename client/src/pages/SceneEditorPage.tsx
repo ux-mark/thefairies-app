@@ -728,12 +728,19 @@ export default function SceneEditorPage() {
     const fairy: Array<DeviceRoomAssignment & { roomName: string }> = []
     const kasa: Array<DeviceRoomAssignment & { roomName: string }> = []
 
+    // Sensor types are not controllable by scenes
+    const SENSOR_TYPES = new Set(['motion', 'contact', 'temperature', 'sensor', 'thermostat'])
+
     for (const [roomName, devices] of roomDevices) {
       for (const device of devices) {
         // Skip "Always Keep On" devices — they are excluded from scene control
         if (device.config?.exclude_from_all_off) continue
 
         const dt = device.device_type.toLowerCase()
+
+        // Skip sensors — not controllable by scenes
+        if (SENSOR_TYPES.has(dt)) continue
+
         if (dt.startsWith('kasa_')) {
           kasa.push({ ...device, roomName })
         } else if (dt.includes('twinkly')) {
