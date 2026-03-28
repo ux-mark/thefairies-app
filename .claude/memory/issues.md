@@ -579,7 +579,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — `active` column missing from schema DDL — breaks fresh deployments
 - **Severity**: critical
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: data-integrity
 - **Description**: The `active` column is queried and updated in `device-health-service.ts`, `scene-executor.ts`, and `system.ts`, but is never added via `CREATE TABLE` or `ALTER TABLE` in `db/index.ts`. On a fresh database (new Pi, wipe-and-restore), all three tables (`hub_devices`, `kasa_devices`, `light_rooms`) are created without `active`. Every call to `isDeviceActive()`, `deactivateDevice()`, or `reactivateDevice()` fails. Scene execution skips the `active = 1` filter, returning no lights for `all_off`. The `all_off` command in scenes silently does nothing on fresh installs.
 - **Fix**: Add `active INTEGER DEFAULT 1` to all three `CREATE TABLE` statements. Add `ALTER TABLE ... ADD COLUMN active INTEGER DEFAULT 1` guards to `initDb()`.
@@ -591,7 +591,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Hubitat device sync has N+1 queries with no concurrency control
 - **Severity**: high
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: `POST /devices/sync` calls `hubitatClient.getDevice(dev.id)` sequentially for every device — one HTTP request per device with 10s timeout. For 20+ devices this takes 20+ serial requests. No mutex prevents concurrent syncs (double-click). Both would run in parallel, conflicting on upsert.
 - **Fix**: Add a `syncInProgress` mutex to reject concurrent syncs with 409. Consider parallelising with concurrency limiter.
@@ -599,7 +599,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Deploy script overwrites production database unconditionally
 - **Severity**: high
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: deployment
 - **Description**: `deploy-to-pi.sh` copies the local database over the Pi's production database on every deploy. Only one `.pre-deploy-backup` is kept (overwritten each time). Accidental deploy from a stale/empty database permanently destroys all production data.
 - **Fix**: Timestamp backup files. Make DB copy opt-in with `--include-db` flag. Keep last N backups.
@@ -611,7 +611,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Memory leak: `webhookHits` rate-limit map grows unboundedly
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: `webhookHits` is a `Map<string, number[]>` that never evicts empty entries. Every unique IP accumulates a permanent empty array. On a long-running Pi process with IP changes, this is a slow memory drain.
 - **Fix**: Delete map key when filtered array is empty. Or add periodic sweep.
@@ -619,7 +619,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Motion handler room timers not cleaned up on shutdown
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: `MotionHandler.roomTimers` holds `NodeJS.Timeout` objects that are never cleared on SIGTERM. Node holds the process open past the 5s forced exit deadline since timers are not `.unref()`'d.
 - **Fix**: Add `shutdown()` method to `MotionHandler` that clears all room timers. Call from shutdown handler in `index.ts`.
@@ -627,7 +627,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — `dashboard.ts` JSON.parse in device context has no error handling
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: `JSON.parse(s.commands)` in `GET /api/dashboard/device/:id/context` is called inside `.filter()` with no try/catch. Corrupt `commands` JSON crashes the entire request with a 500.
 - **Fix**: Wrap in `try { ... } catch { return false }`.
@@ -635,7 +635,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — LIFX `withRetry` only retries once on 429
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: The retry wrapper catches a 429, waits for reset, then calls once more. If the second attempt also gets 429 (clock skew, stale reset timestamp), the error propagates and scene-executor silently swallows it — lights don't change state.
 - **Fix**: Add a second retry cycle or minimum wait floor (2s).
@@ -647,14 +647,14 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Kasa sidecar has no PM2 startup-order guarantee
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: deployment
 - **Description**: PM2 starts Node and Python processes in parallel. Cold Pi boot where Python venv takes >5s means first Kasa poll fails silently.
 - **Files**: `ecosystem.config.cjs`
 
 ### 2026-03-28 — Sonos zone polling timer not cleared on concurrent shutdown
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: Edge case where `poll()` completes and reschedules after `shutdown()` runs.
 - **Fix**: Add `shuttingDown` flag.
@@ -662,7 +662,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — History collector prune blocks event loop at startup
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: `pruneOldLogs()` runs synchronously via better-sqlite3 during startup. Large log tables block all requests.
 - **Fix**: Defer with `setTimeout(..., 60_000)`.
@@ -670,7 +670,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — `dashboard.ts` history endpoint interpolates cutoff into SQL
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: code-quality
 - **Description**: `cutoff` is trusted (from whitelisted switch), but the pattern of string interpolation into SQL is a maintenance risk.
 - **Fix**: Refactor to parameterised values or add safety comment.
@@ -682,7 +682,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — DevicesPage creates redundant socket connection on every filter change
 - **Severity**: high
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: performance
 - **Description**: `socketIo(url, ...)` is called directly inside a `useEffect`, creating a new TCP connection alongside the global singleton from `useSocket.ts`. Every tab change between 'all' and 'sonos' creates and destroys a connection.
 - **Fix**: Reuse `getSocket()` singleton. Register/deregister event handlers with `.on()`/`.off()` only.
@@ -690,7 +690,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — RoomDetailPage creates redundant socket connection per room visit
 - **Severity**: high
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: performance
 - **Description**: Same anti-pattern as DevicesPage — `socketIo()` called directly in useEffect, creating duplicate TCP connections.
 - **Fix**: Use shared `getSocket()` singleton.
@@ -702,7 +702,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — SonosDetailPage debounce timers leak on unmount
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: reliability
 - **Description**: `liveVolumeTimer` and `volumeSaveTimer` useRef timeouts are never cleared on unmount. Navigating away while debounce is pending fires stale mutation.
 - **Fix**: Add cleanup useEffect that clears both timers.
@@ -710,7 +710,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Suppressed ESLint rule hides stale-closure risk in SceneEditorPage
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: code-quality
 - **Description**: `deactivatedCount` useMemo has `eslint-disable-next-line react-hooks/exhaustive-deps` suppressing a real dependency warning. Three inline arrow functions close over `deactivatedSet` but aren't listed as deps.
 - **Fix**: Inline the `.has()` checks directly inside the useMemo. Remove suppression comment.
@@ -718,7 +718,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — EnvironmentCard reads temp_unit from localStorage, bypassing preferences query
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: correctness
 - **Description**: `EnvironmentCard` reads temperature unit from `localStorage` via `getTempUnit()` instead of the `['system', 'preferences']` TanStack Query. Changing the unit in Settings won't update EnvironmentCard until page reload.
 - **Fix**: Use `useQuery` for preferences, matching the pattern in WeatherCard.
@@ -738,7 +738,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Night status query not invalidated on socket mode change
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: correctness
 - **Description**: `['system', 'night-status']` is not invalidated by the socket `mode:change` handler. Up to 10s delay before night banner appears/disappears.
 - **Fix**: Add invalidation in `useSocket.ts` `handleModeChange`.
@@ -746,7 +746,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Chart.register called at module level in 3 separate components
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: code-quality
 - **Description**: Chart.js plugins registered redundantly in `TimeSeriesChart`, `ActivityCard`, and `EnvironmentCard`. Benign but wasteful.
 - **Fix**: Centralise into a single `chartSetup.ts` module.
@@ -754,7 +754,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — DeviceTrendChart uses mutable label as cache key
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: code-quality
 - **Description**: TanStack Query key uses `deviceLabel` (human-readable name) instead of stable device ID. Device rename orphans cache.
 - **Files**: `client/src/components/dashboard/EnergyCard.tsx`
@@ -765,7 +765,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — OptionToggle switch in SceneEditor has no accessible label
 - **Severity**: high
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: `<Switch.Root>` inside `OptionToggle` has no `id`, `aria-label`, or `aria-labelledby`. Screen reader users cannot determine what the toggle controls.
 - **Fix**: Add `aria-label={label}` to Switch.Root, or link with `id`/`htmlFor`.
@@ -777,7 +777,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — `truncate` on MTA accordion summary text
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: ux-microcopy
 - **Description**: MTA accordion header uses `className="truncate"` on the train arrival summary. Violates "no truncation" standard. Long station names get clipped.
 - **Fix**: Remove `truncate`. Allow text to wrap.
@@ -785,7 +785,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Connection status icons use `title` only — not keyboard/SR accessible
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: Wi-Fi icons in LightsPage/LightCard use `<span title="Connected">` with no `aria-label`. Title is hover-only.
 - **Fix**: Add `aria-label` to the icon or add visually-hidden span.
@@ -793,7 +793,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Expand/Collapse buttons have generic labels (no device context)
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: Toggle buttons use `aria-label="Expand"/"Collapse"` without device name context. SR user hears "Expand" without knowing what.
 - **Fix**: Include device name in label: `aria-label={\`Expand ${light.label} controls\`}`.
@@ -801,7 +801,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — LightCard control buttons below 44px touch target
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: Identify and Power buttons in LightCard use `p-2` (~32px). Below 44px minimum. Used inside RoomDetailPage.
 - **Fix**: Add `min-h-[44px] min-w-[44px]`.
@@ -809,7 +809,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — SceneEditor search input missing aria-label
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: Raw `<input>` without `aria-label` or `<label>`. Placeholder is not a substitute.
 - **Fix**: Add `aria-label="Search lights by name"` or use `SearchInput` component.
@@ -817,14 +817,14 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — LightsPage search input missing aria-label
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Fix**: Add `aria-label="Search lights by name or group"`.
 - **Files**: `client/src/pages/LightsPage.tsx`
 
 ### 2026-03-28 — TimersSection cancel button is icon-only with no label and small target
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: Cancel timer X button has no `aria-label` and is only 32px.
 - **Fix**: Add `aria-label={\`Cancel timer: ${timer.sceneName}\`}` and `min-h-[44px]`.
@@ -836,7 +836,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Retry buttons below 44px touch target on error states
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: "Try again" buttons in error states are ~36px height.
 - **Fix**: Add `min-h-[44px]`.
@@ -844,14 +844,14 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Decorative icons missing aria-hidden across several components
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: accessibility
 - **Description**: Lock/Unlock icons in NightModeSection, Settings page heading icon, NotificationPanel action icons all missing `aria-hidden="true"`.
 - **Files**: `NightModeSection.tsx`, `SettingsPage.tsx`, `NotificationPanel.tsx`
 
 ### 2026-03-28 — WeatherCard and MtaCard silently disappear on fetch failure
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: ux-state
 - **Description**: Both cards return `null` when fetch fails. Card disappears with no explanation. User doesn't know data is temporarily unavailable vs removed.
 - **Fix**: Show compact error state: "Weather unavailable" / "Train times unavailable".
@@ -863,7 +863,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — No latency tracking for any external service
 - **Severity**: high
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: observability
 - **Description**: None of the six external API clients (LIFX, Hubitat, Kasa, Sonos, MTA, Weather) track or log response latency. Cannot diagnose "why did that scene take 3s?" from logs.
 - **Fix**: Add wall-clock timing to `lifx-client.ts withRetry`. Log durations over 500ms under a `perf` category. Add timing to `scene-executor.ts` for Hubitat/Kasa calls.
@@ -875,7 +875,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Motion log volume is extreme production noise (~550 entries/hr)
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: 44,929 of 77,015 log rows (58%) in 6 days are motion category. High-frequency, low-signal entries (lux threshold skips, automation disabled, sensors still active) bury actionable logs. Log viewer defaults (25 rows DESC) are overwhelmed within seconds.
 - **Fix**: Move intermediate decision-path messages behind `process.env.DEBUG`. Keep only actionable events (activation, timer, error). Would reduce volume ~60-70%.
@@ -883,7 +883,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Sonos events go only to console, not DB
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: All Sonos follow-me, auto-play, zone polling events use `console.log('[sonos]')` only. Not queryable via `/api/system/logs?category=sonos`. Cannot diagnose "why didn't music follow me" from the log viewer.
 - **Fix**: Write to `logs` table under `sonos` category, matching the pattern used everywhere else.
@@ -891,7 +891,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — No index on `logs.category` — slow filtered queries at scale
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: performance
 - **Description**: `GET /api/system/logs?category=X` does a full table scan on 77K+ rows. No index on `category` or `(category, created_at)`.
 - **Fix**: Add `CREATE INDEX IF NOT EXISTS idx_logs_category ON logs (category, created_at DESC)`.
@@ -899,7 +899,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Kasa poller failures produce no DB log or notification
 - **Severity**: medium
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: When the entire Kasa sidecar poll fails, the error goes only to `console.error`. Sidecar crashes leave no queryable record.
 - **Fix**: Write to `logs` table under `kasa` category on failure. Create warning notification after N consecutive failures.
@@ -911,21 +911,21 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — LIFX rate-limit events are silent
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: 429 throttling and recovery in `lifx-client.ts` produce no DB log. Sustained throttling is invisible.
 - **Files**: `server/src/lib/lifx-client.ts`
 
 ### 2026-03-28 — Weather/MTA indicator errors swallowed to console only
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: Weather indicator errors go to `console.error` only. MTA per-stop failures are silently caught. Neither writes to DB.
 - **Files**: `server/src/lib/weather-indicator.ts`, `server/src/lib/mta-indicator.ts`
 
 ### 2026-03-28 — Manual vs auto scene activation not distinguishable in logs
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: Both manual (user-triggered) and auto (motion-triggered) activations log identical `Activating scene: X` messages.
 - **Fix**: Add source context: `[manual]` vs `[auto]`.
@@ -933,7 +933,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Debug-level request body logs left in production
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: `lights.ts` and `rooms.ts` routes unconditionally log full request bodies to PM2 stdout.
 - **Fix**: Gate behind `process.env.DEBUG`.
@@ -941,7 +941,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — Socket.io connect/disconnect logged at info level permanently
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: logging
 - **Description**: Every browser tab open/close generates console noise. Multiple devices + reconnects on network blips.
 - **Fix**: Gate behind `process.env.DEBUG` or only log unexpected disconnects.
@@ -949,7 +949,7 @@ The following issues were discovered during a comprehensive technical and UX aud
 
 ### 2026-03-28 — `logs` table growth unbounded for motion category
 - **Severity**: low
-- **Status**: open
+- **Status**: resolved (PR #76)
 - **Category**: data-integrity
 - **Description**: At 13,000 motion entries/day, steady-state is ~390K rows. Combined with no `(category, created_at)` index, query performance degrades.
 - **Fix**: Either reduce motion verbosity (primary fix) or prune motion category more aggressively (7 days vs 30).

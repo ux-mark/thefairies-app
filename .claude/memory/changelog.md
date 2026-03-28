@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-03-28 — Fix all 41 product audit issues (PR #76)
+- **Schema DDL**: `active` column added to CREATE TABLE for hub_devices, kasa_devices, light_rooms + ALTER TABLE migration guards
+- **Backend reliability**: sync mutex (409), webhookHits leak fix, MotionHandler shutdown(), Sonos shuttingDown flag, deferred pruneOldLogs, LIFX 3-attempt withRetry, PM2 restart_delay
+- **Frontend sockets**: DevicesPage + RoomDetailPage use getSocket() singleton, SonosDetailPage timer cleanup, SceneEditorPage eslint fix
+- **Frontend correctness**: EnvironmentCard useQuery for temp unit, night-status invalidation, centralised Chart.js registration, stable EnergyCard cache keys
+- **Accessibility (14 fixes)**: aria-labels on switches/inputs/expand buttons, connection icons, 44px touch targets, aria-hidden on decorative icons, truncate removal, WeatherCard/MtaCard error states
+- **Logging**: logs category index, DEBUG-gated motion messages (~60-70% volume reduction), Sonos/Kasa/LIFX/weather/MTA DB logging, scene source context [manual]/[auto]/[timer]/[chain], log viewer categories for sonos/kasa/mta-indicator
+- **Deploy script**: DB copy opt-in via --include-db, timestamped backups (keep 5)
+- **Files**: 36 files changed (+244/-139)
+
 ## 2026-03-28 — Comprehensive product audit (5 parallel reviews)
 - **Feature documentation**: Populated `.specs/features.md` with complete 14-section feature inventory (was completely empty despite 68 PRs)
 - **Issues documented**: 40+ new issues across 5 categories in `.claude/memory/issues.md`
