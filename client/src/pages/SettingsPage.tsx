@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { ModesList } from '@/components/modes/ModesList'
 import ModeDetail from '@/components/modes/ModeDetail'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Settings,
   X,
@@ -23,6 +23,9 @@ import {
   TrainFront,
   CloudSun,
   HardDrive,
+  LogOut,
+  UserPlus,
+  Users,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -36,6 +39,7 @@ import { IndicatorSection } from '@/components/settings/IndicatorSection'
 import { WeatherIndicatorSection } from '@/components/settings/WeatherIndicatorSection'
 import { DataManagementSection } from '@/components/settings/DataManagementSection'
 import { MusicSection } from '@/components/settings/MusicSection'
+import { authClient } from '@/lib/auth-client'
 
 // ── Theme section ───────────────────────────────────────────────────────────
 
@@ -407,7 +411,7 @@ function SystemSection() {
 
 // ── Category accordion ───────────────────────────────────────────────────────
 
-type CategoryId = 'preferences' | 'music' | 'modes-and-schedule' | 'public-transport' | 'weather' | 'system'
+type CategoryId = 'account' | 'preferences' | 'music' | 'modes-and-schedule' | 'public-transport' | 'weather' | 'system'
 
 function CategoryAccordion({
   categoryId,
@@ -476,6 +480,181 @@ function CategoryAccordion({
   )
 }
 
+// ── Account section ────────────────────────────────────────────────────────
+
+function AccountSection() {
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const { data: session } = authClient.useSession()
+  const isAdmin = session?.user?.role === 'admin'
+
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [addingUser, setAddingUser] = useState(false)
+
+  const { data: usersData, refetch: refetchUsers } = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
+      const result = await authClient.admin.listUsers({ query: { limit: 100 } })
+      return result.data
+    },
+    enabled: isAdmin,
+  })
+
+  const users = usersData?.users ?? []
+
+  async function handleSignOut() {
+    await authClient.signOut()
+    navigate('/login', { replace: true })
+  }
+
+  async function handleAddUser() {
+    if (!newEmail || !newName || !newPassword) return
+    setAddingUser(true)
+    try {
+      const result = await authClient.admin.createUser({
+        email: newEmail,
+        name: newName,
+        password: newPassword,
+        role: 'user',
+      })
+      if (result.error) {
+        toast({ message: result.error.message || 'Failed to create user', type: 'error' })
+      } else {
+        toast({ message: `User ${newName} created` })
+        setNewEmail('')
+        setNewName('')
+        setNewPassword('')
+        setShowAddUser(false)
+        refetchUsers()
+      }
+    } catch {
+      toast({ message: 'Failed to create user', type: 'error' })
+    } finally {
+      setAddingUser(false)
+    }
+  }
+
+  async function handleRemoveUser(userId: string, userName: string) {
+    if (userId === session?.user?.id) return
+    try {
+      await authClient.admin.removeUser({ userId })
+      toast({ message: `${userName} removed` })
+      refetchUsers()
+    } catch {
+      toast({ message: 'Failed to remove user', type: 'error' })
+    }
+  }
+
+  return (
+    <Section title="Account">
+      <div className="space-y-4">
+        {session?.user && (
+          <div className="flex items-center justify-between text-sm">
+            <div>
+              <p className="text-heading font-medium">{session.user.name}</p>
+              <p className="text-caption text-xs">{session.user.email}</p>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/10"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </div>
+        )}
+
+        {isAdmin && (
+          <>
+            <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+                  <span className="text-heading text-sm font-medium">Household members</span>
+                </div>
+                <button
+                  onClick={() => setShowAddUser(!showAddUser)}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-fairy-400 transition-colors hover:bg-fairy-500/10"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Add
+                </button>
+              </div>
+
+              {showAddUser && (
+                <div className="mb-4 space-y-3 rounded-lg p-3" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="text-body w-full rounded-lg border px-3 py-2 text-sm"
+                    style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-primary)' }}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="text-body w-full rounded-lg border px-3 py-2 text-sm"
+                    style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-primary)' }}
+                  />
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="text-body w-full rounded-lg border px-3 py-2 text-sm"
+                    style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-primary)' }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAddUser}
+                      disabled={addingUser || !newEmail || !newName || !newPassword}
+                      className="rounded-lg bg-fairy-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-fairy-600 disabled:opacity-50"
+                    >
+                      {addingUser ? 'Creating...' : 'Create user'}
+                    </button>
+                    <button
+                      onClick={() => setShowAddUser(false)}
+                      className="rounded-lg px-3 py-2 text-sm text-caption transition-colors hover:bg-[var(--bg-tertiary)]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {users.map(user => (
+                  <div key={user.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                    <div>
+                      <p className="text-heading">{user.name}</p>
+                      <p className="text-caption text-xs">{user.email} {user.role === 'admin' && <span className="text-fairy-400">(admin)</span>}</p>
+                    </div>
+                    {user.id !== session?.user?.id && (
+                      <button
+                        onClick={() => handleRemoveUser(user.id, user.name)}
+                        aria-label={`Remove ${user.name}`}
+                        className="rounded-lg p-2 text-[var(--text-secondary)] transition-colors hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 // ── Settings page ───────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -493,6 +672,16 @@ export default function SettingsPage() {
       </div>
 
       <div className="divide-y divide-[var(--border-secondary)]">
+        <CategoryAccordion
+          categoryId="account"
+          label="Account"
+          icon={Users}
+          isOpen={openCategory === 'account'}
+          onToggle={() => handleToggle('account')}
+        >
+          <AccountSection />
+        </CategoryAccordion>
+
         <CategoryAccordion
           categoryId="preferences"
           label="Preferences"
