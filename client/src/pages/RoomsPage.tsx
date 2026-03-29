@@ -6,6 +6,7 @@ import {
   Sparkles,
   DoorOpen,
   AlertTriangle,
+  Settings2,
 } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { api } from '@/lib/api'
@@ -14,12 +15,14 @@ import { useToast } from '@/hooks/useToast'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LucideIcon } from '@/components/ui/LucideIcon'
 import { SkeletonList } from '@/components/ui/Skeleton'
+import RoomReorderOverlay from '@/components/RoomReorderOverlay'
 
 export default function RoomsPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newRoomName, setNewRoomName] = useState('')
+  const [reorderOpen, setReorderOpen] = useState(false)
 
   const { data: rooms, isLoading, isError, refetch } = useQuery({
     queryKey: ['rooms'],
@@ -181,6 +184,25 @@ export default function RoomsPage() {
           sub='Tap "Add Room" above to create your first room.'
         />
       )}
+
+      {rooms && rooms.length > 1 && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() => setReorderOpen(true)}
+            className="flex min-h-[44px] items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-fairy-400 transition-colors hover:text-fairy-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+          >
+            <Settings2 className="h-4 w-4" aria-hidden="true" />
+            Reorder rooms
+          </button>
+        </div>
+      )}
+
+      <RoomReorderOverlay
+        rooms={rooms ?? []}
+        open={reorderOpen}
+        onClose={() => setReorderOpen(false)}
+        showAll
+      />
     </div>
   )
 }

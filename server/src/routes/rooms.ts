@@ -10,6 +10,7 @@ interface RoomRow {
   name: string
   display_order: number
   parent_room: string | null
+  promoted: number
   auto: number
   timer: number
   tags: string
@@ -62,6 +63,7 @@ function parseRoom(row: RoomRow) {
     sensors: sensorRows.map(s => ({ name: s.device_label, id: s.device_id })),
     tags: Array.isArray(tags) ? tags : [],
     auto: Boolean(row.auto),
+    promoted: Boolean(row.promoted),
     sonos_follow_me: Boolean(row.sonos_follow_me),
     sonos_auto_start: Boolean(row.sonos_auto_start),
     temperature: sensorReading?.temperature ?? null,
@@ -73,6 +75,7 @@ const createRoomSchema = z.object({
   name: z.string().min(1),
   display_order: z.number().optional(),
   parent_room: z.string().nullable().optional(),
+  promoted: z.boolean().optional(),
   auto: z.boolean().optional(),
   timer: z.number().optional(),
   tags: z.array(z.string()).optional(),
@@ -82,6 +85,7 @@ const createRoomSchema = z.object({
 const updateRoomSchema = z.object({
   display_order: z.number().optional(),
   parent_room: z.string().nullable().optional(),
+  promoted: z.boolean().optional(),
   auto: z.boolean().optional(),
   timer: z.number().optional(),
   tags: z.array(z.string()).optional(),
@@ -175,12 +179,13 @@ router.post('/', (req: Request, res: Response) => {
     if (process.env.DEBUG) console.log('[rooms POST] body:', JSON.stringify(req.body))
     const body = createRoomSchema.parse(req.body)
     run(
-      `INSERT INTO rooms (name, display_order, parent_room, auto, timer, tags, icon)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO rooms (name, display_order, parent_room, promoted, auto, timer, tags, icon)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         body.name,
         body.display_order ?? 0,
         body.parent_room ?? null,
+        body.promoted !== undefined ? Number(body.promoted) : 0,
         body.auto !== undefined ? Number(body.auto) : 1,
         body.timer ?? 15,
         JSON.stringify(body.tags ?? []),
@@ -211,11 +216,26 @@ router.put('/:name', (req: Request, res: Response) => {
       return
     }
     const body = updateRoomSchema.parse(req.body)
+
+    // Prevent child-of-child: proposed parent must not itself have a parent
+    if (body.parent_room) {
+      const proposedParent = getOne<RoomRow>('SELECT * FROM rooms WHERE name = ?', [body.parent_room])
+      if (!proposedParent) {
+        res.status(400).json({ error: 'Parent room not found' })
+        return
+      }
+      if (proposedParent.parent_room) {
+        res.status(400).json({ error: 'Cannot nest rooms more than one level deep' })
+        return
+      }
+    }
+
     const fields: string[] = []
     const values: unknown[] = []
 
     if (body.display_order !== undefined) { fields.push('display_order = ?'); values.push(body.display_order) }
     if (body.parent_room !== undefined) { fields.push('parent_room = ?'); values.push(body.parent_room) }
+    if (body.promoted !== undefined) { fields.push('promoted = ?'); values.push(Number(body.promoted)) }
     if (body.auto !== undefined) { fields.push('auto = ?'); values.push(Number(body.auto)) }
     if (body.timer !== undefined) { fields.push('timer = ?'); values.push(body.timer) }
     if (body.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(body.tags)) }

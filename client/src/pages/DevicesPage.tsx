@@ -1058,6 +1058,12 @@ export default function DevicesPage() {
     [rooms],
   )
 
+  const roomMap = useMemo(() => {
+    const map = new Map<string, Room>()
+    for (const r of rooms ?? []) map.set(r.name, r)
+    return map
+  }, [rooms])
+
   return (
     <div>
       {/* Header */}
@@ -1182,23 +1188,93 @@ export default function DevicesPage() {
         <SkeletonList count={6} height="h-16" />
       ) : filtered.length > 0 ? (
         <div className="space-y-3">
-          {Array.from(grouped.groups.entries())
+          {groupMode === 'room' ? (() => {
+            // Build hierarchy: separate parent rooms from child rooms
+            const allEntries = Array.from(grouped.groups.entries())
+            // childrenOf maps parentRoomName -> [childRoomName, devices][]
+            const childrenOf = new Map<string, [string, UnifiedDevice[]][]>()
+            const topLevelEntries: [string, UnifiedDevice[]][] = []
+
+            for (const [group, devices] of allEntries) {
+              const room = roomMap.get(group)
+              const parentName = room?.parent_room
+              if (parentName && !room?.promoted) {
+                // Non-promoted child — nest under parent
+                if (!childrenOf.has(parentName)) childrenOf.set(parentName, [])
+                childrenOf.get(parentName)!.push([group, devices])
+              } else {
+                // Top-level room OR promoted child (gets its own accordion)
+                topLevelEntries.push([group, devices])
+              }
+            }
+
+            // Add parent rooms that have children with devices but no devices of their own
+            const topLevelNames = new Set(topLevelEntries.map(([name]) => name))
+            for (const parentName of childrenOf.keys()) {
+              if (!topLevelNames.has(parentName)) {
+                topLevelEntries.push([parentName, []])
+              }
+            }
+
+            return topLevelEntries
+              .sort(([a], [b]) => (roomOrderMap.get(a) ?? 999) - (roomOrderMap.get(b) ?? 999))
+              .map(([group, ownDevices]) => {
+                const childEntries = (childrenOf.get(group) ?? [])
+                  .sort(([a], [b]) => (roomOrderMap.get(a) ?? 999) - (roomOrderMap.get(b) ?? 999))
+                const totalCount = ownDevices.length + childEntries.reduce((sum, [, d]) => sum + d.length, 0)
+                const accordionId = `devices-${group.replace(/\s+/g, '-').toLowerCase()}`
+                return (
+                  <Accordion
+                    key={group}
+                    id={accordionId}
+                    title={
+                      <span className="flex items-center gap-1.5">
+                        <LucideIcon name={roomIconMap[group] ?? null} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
+                        {group}
+                      </span>
+                    }
+                    open={computedOpenGroups.has(group)}
+                    onToggle={() => toggleGroup(group)}
+                    count={totalCount}
+                  >
+                    {childEntries.map(([childName, childDevices]) => (
+                      <div key={childName} className="ml-2 mt-1">
+                        <Accordion
+                          id={`devices-${childName.replace(/\s+/g, '-').toLowerCase()}`}
+                          card={false}
+                          title={
+                            <span className="flex items-center gap-1.5">
+                              <LucideIcon name={roomIconMap[childName] ?? null} className="h-3.5 w-3.5 shrink-0 text-fairy-400" aria-hidden="true" />
+                              {childName}
+                            </span>
+                          }
+                          open={computedOpenGroups.has(childName)}
+                          onToggle={() => toggleGroup(childName)}
+                          count={childDevices.length}
+                        >
+                          <div className="space-y-2">
+                            {childDevices.map(d => <DeviceCard key={d.key} device={d} rooms={rooms} />)}
+                          </div>
+                        </Accordion>
+                      </div>
+                    ))}
+                    {ownDevices.length > 0 && (
+                      <div className={cn('space-y-2', childEntries.length > 0 && 'mt-2 pt-2')}>
+                        {ownDevices.map(d => <DeviceCard key={d.key} device={d} rooms={rooms} />)}
+                      </div>
+                    )}
+                  </Accordion>
+                )
+              })
+          })() : Array.from(grouped.groups.entries())
             .sort(([a], [b]) => (roomOrderMap.get(a) ?? 999) - (roomOrderMap.get(b) ?? 999))
             .map(([group, devices]) => {
               const accordionId = `devices-${group.replace(/\s+/g, '-').toLowerCase()}`
-              const accordionTitle = groupMode === 'room' ? (
-                <span className="flex items-center gap-1.5">
-                  <LucideIcon name={roomIconMap[group] ?? null} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
-                  {group}
-                </span>
-              ) : (
-                groupLabel(group)
-              )
               return (
                 <Accordion
                   key={group}
                   id={accordionId}
-                  title={accordionTitle}
+                  title={groupLabel(group)}
                   open={computedOpenGroups.has(group)}
                   onToggle={() => toggleGroup(group)}
                   count={devices.length}

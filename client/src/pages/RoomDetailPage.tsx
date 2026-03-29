@@ -330,7 +330,8 @@ export default function RoomDetailPage() {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set())
 
   // Section accordion state
-  const [settingsOpen, setSettingsOpen] = useState(true)
+  const [subSpacesOpen, setSubSpacesOpen] = useState(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [scenesOpen, setScenesOpen] = useState(false)
   const [devicesOpen, setDevicesOpen] = useState(false)
 
@@ -566,19 +567,19 @@ export default function RoomDetailPage() {
   })
 
   // Room settings state
-  const [displayOrder, setDisplayOrder] = useState<number | null>(null)
   const [timer, setTimer] = useState<number | null>(null)
   const [autoEnabled, setAutoEnabled] = useState<boolean | null>(null)
   const [parentRoom, setParentRoom] = useState<string | null>(null)
+  const [promoted, setPromoted] = useState<boolean | null>(null)
   const [sensors, setSensors] = useState<Sensor[] | null>(null)
   const [_roomNameEdit, _setRoomNameEdit] = useState<string | null>(null)
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
 
   // Compute effective values (from state or room data)
-  const effectiveOrder = displayOrder ?? room?.display_order ?? 0
   const effectiveTimer = timer ?? room?.timer ?? 0
   const effectiveAuto = autoEnabled ?? room?.auto ?? false
   const effectiveParent = parentRoom ?? room?.parent_room ?? ''
+  const effectivePromoted = promoted ?? room?.promoted ?? false
   const effectiveSensors = (sensors ?? room?.sensors ?? []).map(s => {
     // Resolve current name from hub devices (handles renamed sensors)
     if (s.id && allHubDevices) {
@@ -849,9 +850,16 @@ export default function RoomDetailPage() {
     return parts.length > 0 ? parts.join(', ') : 'No matches'
   }, [deviceSearch, filteredAssignedDevices, filteredAvailableDevicesByType])
 
-  // Other rooms for parent selector (exclude self)
+  // Other rooms for parent selector (exclude self and rooms that already have a parent)
   const parentRoomOptions = useMemo(() => {
-    return (allRooms ?? []).filter(r => r.name !== name)
+    return (allRooms ?? []).filter(r => r.name !== name && !r.parent_room)
+  }, [allRooms, name])
+
+  // Rooms that have this room as their parent
+  const childRooms = useMemo(() => {
+    return (allRooms ?? [])
+      .filter(r => r.parent_room === name)
+      .sort((a, b) => a.display_order - b.display_order)
   }, [allRooms, name])
 
   // Sonos setting mutations — these save immediately (not batched with room save)
@@ -939,10 +947,11 @@ export default function RoomDetailPage() {
     mutationFn: async () => {
       // Save room settings
       await api.rooms.update(name!, {
-        display_order: effectiveOrder,
+        display_order: room?.display_order ?? 0,
         timer: effectiveTimer,
         auto: effectiveAuto,
         parent_room: effectiveParent,
+        promoted: effectivePromoted,
       })
       // Save light assignments
       await api.lights.saveForRoom(name!, effectiveAssigned)
@@ -1017,6 +1026,8 @@ export default function RoomDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['lights', 'rooms'] })
       queryClient.invalidateQueries({ queryKey: ['hubitat', 'device-rooms'] })
       setDirty(false)
+      setPromoted(null)
+      setParentRoom(null)
       setPendingDeviceAssigns([])
       setPendingDeviceUnassigns([])
       setPendingDeviceConfigs({})
@@ -1266,6 +1277,20 @@ export default function RoomDetailPage() {
       <div className="mb-6">
         <BackLink to="/rooms" label="All Rooms" className="mb-3" />
 
+        {/* Breadcrumb — shown when this room has a parent */}
+        {room?.parent_room && (
+          <div className="mb-1 flex items-center gap-1.5 text-xs">
+            <Link
+              to={`/rooms/${encodeURIComponent(room.parent_room)}`}
+              className="text-fairy-400 hover:text-fairy-300 transition-colors"
+            >
+              {room.parent_room}
+            </Link>
+            <ChevronRight className="h-3 w-3 text-caption" aria-hidden="true" />
+            <span className="text-caption">{room.name}</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           {/* Room icon — click to change, or show add-icon button if none set */}
           <div className="relative">
@@ -1306,33 +1331,43 @@ export default function RoomDetailPage() {
           </h2>
         </div>
 
-        {/* Parent room selector */}
-        {parentRoomOptions.length > 0 && (
-          <div className="mt-2">
-            <label className="mr-2 text-xs font-medium text-caption">
-              Parent room
-            </label>
-            <select
-              value={effectiveParent}
-              onChange={e => {
-                setParentRoom(e.target.value)
-                markDirty()
-              }}
-              className="h-9 rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-              aria-label="Parent room"
-            >
-              <option value="">None</option>
-              {parentRoomOptions.map(r => (
-                <option key={r.name} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
 
       <div className="space-y-4">
+      {/* ── Child rooms accordion ──────────────────────────────────────────── */}
+      {childRooms.length > 0 && (
+        <section>
+          <Accordion
+            id="room-sub-spaces"
+            title={`Child rooms`}
+            open={subSpacesOpen}
+            onToggle={() => setSubSpacesOpen(prev => !prev)}
+            count={childRooms.length}
+          >
+            <div className="space-y-1.5">
+              {childRooms.map(child => (
+                <Link
+                  key={child.name}
+                  to={`/rooms/${encodeURIComponent(child.name)}`}
+                  className="flex items-center justify-between rounded-lg surface px-3 py-2 text-sm hover:brightness-110 transition-all min-h-[44px]"
+                >
+                  <span className="flex items-center gap-2">
+                    <LucideIcon name={child.icon} className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+                    <span className="text-heading">{child.name}</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {child.current_scene && (
+                      <span className="text-xs text-fairy-400">{child.current_scene}</span>
+                    )}
+                    <ChevronRight className="h-3.5 w-3.5 text-caption" aria-hidden="true" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Accordion>
+        </section>
+      )}
+
       {/* ── Settings card ───────────────────────────────────────────────────── */}
       <section>
         <Accordion
@@ -1372,38 +1407,96 @@ export default function RoomDetailPage() {
               </Switch.Root>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-body">
-                  Auto-off after inactivity (min)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={effectiveTimer}
-                  onChange={e => {
-                    setTimer(Number(e.target.value))
-                    markDirty()
-                  }}
-                  className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface px-3 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-body">
-                  Display Order
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={effectiveOrder}
-                  onChange={e => {
-                    setDisplayOrder(Number(e.target.value))
-                    markDirty()
-                  }}
-                  className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface px-3 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-                />
-              </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-body">
+                Auto-off after inactivity (min)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={effectiveTimer}
+                onChange={e => {
+                  setTimer(Number(e.target.value))
+                  markDirty()
+                }}
+                className="h-11 w-full rounded-lg border border-[var(--border-secondary)] surface px-3 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+              />
             </div>
+
+            {/* ── Child rooms / parent-room config ── */}
+            {(parentRoomOptions.length > 0 || childRooms.length > 0) && (
+              <div className="space-y-4 border-t border-[var(--border-secondary)] pt-4">
+                <p className="text-xs font-semibold text-caption">Child rooms</p>
+
+                {/* Parent room selector — always show when there are eligible parents */}
+                {parentRoomOptions.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-heading" htmlFor="parent-room-select">
+                      Parent room
+                    </label>
+                    <select
+                      id="parent-room-select"
+                      value={effectiveParent}
+                      onChange={e => { setParentRoom(e.target.value); markDirty() }}
+                      className="h-9 rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                      aria-label="Parent room"
+                    >
+                      <option value="">None</option>
+                      {parentRoomOptions.map(r => (
+                        <option key={r.name} value={r.name}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Show on homepage toggle — only when parent is set */}
+                {effectiveParent && (
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="promoted-toggle" className="text-sm font-medium text-heading">
+                      Show on homepage
+                    </label>
+                    <Switch.Root
+                      id="promoted-toggle"
+                      checked={effectivePromoted}
+                      onCheckedChange={c => { setPromoted(c); markDirty() }}
+                      className={cn(
+                        'relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                        effectivePromoted ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
+                      )}
+                    >
+                      <Switch.Thumb
+                        className={cn(
+                          'block h-5 w-5 rounded-full bg-white shadow transition-transform',
+                          effectivePromoted ? 'translate-x-6' : 'translate-x-1',
+                        )}
+                      />
+                    </Switch.Root>
+                  </div>
+                )}
+
+                {/* Child rooms listing */}
+                {childRooms.length > 0 && (
+                  <div className="space-y-1.5">
+                    {childRooms.map(child => (
+                      <Link
+                        key={child.name}
+                        to={`/rooms/${encodeURIComponent(child.name)}`}
+                        className="flex items-center justify-between rounded-lg surface px-3 py-2 text-sm hover:brightness-110 transition-all min-h-[44px]"
+                      >
+                        <span className="flex items-center gap-2">
+                          <LucideIcon name={child.icon} className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+                          <span className="text-heading">{child.name}</span>
+                        </span>
+                        <span className="text-caption text-xs">
+                          {child.promoted ? 'On homepage' : 'Child room only'}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Sonos controls (only shown when a speaker is mapped to this room) ── */}
             {roomSpeaker && (
