@@ -580,7 +580,7 @@ function MtaCard() {
                 <DirArrow className="h-3.5 w-3.5 shrink-0 text-caption" aria-label={dirLabel} />
                 {/* Station name + message inline, wrapping */}
                 <p className="min-w-0 flex-1 text-heading font-medium leading-snug">
-                  {stop.config.name} {message && <span className="font-normal text-caption text-xs">{message}</span>}
+                  {stop.config.name} {message && <span className="font-normal text-body text-xs">{message}</span>}
                 </p>
               </div>
             )
