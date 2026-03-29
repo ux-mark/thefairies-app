@@ -330,7 +330,8 @@ export default function RoomDetailPage() {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set())
 
   // Section accordion state
-  const [settingsOpen, setSettingsOpen] = useState(true)
+  const [subSpacesOpen, setSubSpacesOpen] = useState(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [scenesOpen, setScenesOpen] = useState(false)
   const [devicesOpen, setDevicesOpen] = useState(false)
 
@@ -1335,6 +1336,40 @@ export default function RoomDetailPage() {
       </div>
 
       <div className="space-y-4">
+      {/* ── Sub-spaces accordion ──────────────────────────────────────────── */}
+      {childRooms.length > 0 && (
+        <section>
+          <Accordion
+            id="room-sub-spaces"
+            title={`Sub-spaces`}
+            open={subSpacesOpen}
+            onToggle={() => setSubSpacesOpen(prev => !prev)}
+            count={childRooms.length}
+          >
+            <div className="space-y-1.5">
+              {childRooms.map(child => (
+                <Link
+                  key={child.name}
+                  to={`/rooms/${encodeURIComponent(child.name)}`}
+                  className="flex items-center justify-between rounded-lg surface px-3 py-2 text-sm hover:brightness-110 transition-all min-h-[44px]"
+                >
+                  <span className="flex items-center gap-2">
+                    <LucideIcon name={child.icon} className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+                    <span className="text-heading">{child.name}</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {child.current_scene && (
+                      <span className="text-xs text-fairy-400">{child.current_scene}</span>
+                    )}
+                    <ChevronRight className="h-3.5 w-3.5 text-caption" aria-hidden="true" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Accordion>
+        </section>
+      )}
+
       {/* ── Settings card ───────────────────────────────────────────────────── */}
       <section>
         <Accordion
