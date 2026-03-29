@@ -1332,81 +1332,6 @@ export default function RoomDetailPage() {
           </h2>
         </div>
 
-        {/* Parent room selector */}
-        {parentRoomOptions.length > 0 && (
-          <div className="mt-2">
-            <label className="mr-2 text-xs font-medium text-caption">
-              Parent room
-            </label>
-            <select
-              value={effectiveParent}
-              onChange={e => {
-                setParentRoom(e.target.value)
-                markDirty()
-              }}
-              className="h-9 rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
-              aria-label="Parent room"
-            >
-              <option value="">None</option>
-              {parentRoomOptions.map(r => (
-                <option key={r.name} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Promote to homepage toggle — only shown when a parent room is set */}
-        {effectiveParent && (
-          <div className="mt-2 flex items-center gap-2 min-h-[44px]">
-            <label className="text-xs font-medium text-caption" htmlFor="promoted-toggle">
-              Show on homepage
-            </label>
-            <button
-              id="promoted-toggle"
-              role="switch"
-              aria-checked={effectivePromoted}
-              onClick={() => { setPromoted(!effectivePromoted); markDirty() }}
-              className={cn(
-                'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors min-h-[44px] min-w-[44px] items-center justify-center',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
-                effectivePromoted ? 'bg-fairy-500' : 'bg-slate-600',
-              )}
-            >
-              <span
-                className={cn(
-                  'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform mt-0.5',
-                  effectivePromoted ? 'translate-x-4.5 ml-0' : 'translate-x-0.5',
-                )}
-              />
-            </button>
-          </div>
-        )}
-
-        {/* Sub-spaces — shown when other rooms list this room as their parent */}
-        {childRooms.length > 0 && (
-          <div className="mt-4">
-            <h4 className="text-xs font-medium text-caption mb-2">Sub-spaces</h4>
-            <div className="space-y-1.5">
-              {childRooms.map(child => (
-                <Link
-                  key={child.name}
-                  to={`/rooms/${encodeURIComponent(child.name)}`}
-                  className="flex items-center justify-between rounded-lg surface px-3 py-2 text-sm hover:brightness-110 transition-all min-h-[44px]"
-                >
-                  <span className="flex items-center gap-2">
-                    <LucideIcon name={child.icon} className="h-4 w-4 text-fairy-400" aria-hidden="true" />
-                    <span className="text-heading">{child.name}</span>
-                  </span>
-                  <span className="text-caption text-xs">
-                    {child.promoted ? 'On homepage' : 'Sub-space only'}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="space-y-4">
@@ -1481,6 +1406,81 @@ export default function RoomDetailPage() {
                 />
               </div>
             </div>
+
+            {/* ── Sub-spaces / parent-room config ── */}
+            {(parentRoomOptions.length > 0 || childRooms.length > 0) && (
+              <div className="space-y-4 border-t border-[var(--border-secondary)] pt-4">
+                <p className="text-xs font-semibold text-caption">Sub-spaces</p>
+
+                {/* Parent room selector — always show when there are eligible parents */}
+                {parentRoomOptions.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-heading" htmlFor="parent-room-select">
+                      Parent room
+                    </label>
+                    <select
+                      id="parent-room-select"
+                      value={effectiveParent}
+                      onChange={e => { setParentRoom(e.target.value); markDirty() }}
+                      className="h-9 rounded-lg border border-[var(--border-secondary)] surface px-2.5 text-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500"
+                      aria-label="Parent room"
+                    >
+                      <option value="">None</option>
+                      {parentRoomOptions.map(r => (
+                        <option key={r.name} value={r.name}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Show on homepage toggle — only when parent is set */}
+                {effectiveParent && (
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="promoted-toggle" className="text-sm font-medium text-heading">
+                      Show on homepage
+                    </label>
+                    <Switch.Root
+                      id="promoted-toggle"
+                      checked={effectivePromoted}
+                      onCheckedChange={c => { setPromoted(c); markDirty() }}
+                      className={cn(
+                        'relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                        effectivePromoted ? 'bg-fairy-500' : 'bg-[var(--border-secondary)]',
+                      )}
+                    >
+                      <Switch.Thumb
+                        className={cn(
+                          'block h-5 w-5 rounded-full bg-white shadow transition-transform',
+                          effectivePromoted ? 'translate-x-6' : 'translate-x-1',
+                        )}
+                      />
+                    </Switch.Root>
+                  </div>
+                )}
+
+                {/* Child rooms listing */}
+                {childRooms.length > 0 && (
+                  <div className="space-y-1.5">
+                    {childRooms.map(child => (
+                      <Link
+                        key={child.name}
+                        to={`/rooms/${encodeURIComponent(child.name)}`}
+                        className="flex items-center justify-between rounded-lg surface px-3 py-2 text-sm hover:brightness-110 transition-all min-h-[44px]"
+                      >
+                        <span className="flex items-center gap-2">
+                          <LucideIcon name={child.icon} className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+                          <span className="text-heading">{child.name}</span>
+                        </span>
+                        <span className="text-caption text-xs">
+                          {child.promoted ? 'On homepage' : 'Sub-space only'}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Sonos controls (only shown when a speaker is mapped to this room) ── */}
             {roomSpeaker && (

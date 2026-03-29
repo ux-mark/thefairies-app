@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import type { Room, Scene } from '@/lib/api'
 import { getDefaultScene, isSceneInSeason } from '@/lib/scene-utils'
 import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
@@ -102,6 +103,8 @@ function RoomCard({
   onToggleScene,
   onToggleAuto,
   isLocked,
+  expandedChildren,
+  onToggleChild,
 }: {
   room: Room
   allRooms: Room[]
@@ -111,6 +114,8 @@ function RoomCard({
   onToggleScene: (name: string, isActive: boolean) => void
   onToggleAuto: () => void
   isLocked?: boolean
+  expandedChildren: Set<string>
+  onToggleChild: (childName: string) => void
 }) {
   const childRooms = allRooms
     .filter(r => r.parent_room === room.name && !r.promoted)
@@ -234,17 +239,113 @@ function RoomCard({
 
       {/* Sub-spaces chip shelf */}
       {childRooms.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[var(--border-secondary)] pt-3">
-          {childRooms.map(child => (
-            <Link
-              key={child.name}
-              to={`/rooms/${encodeURIComponent(child.name)}`}
-              className="flex items-center gap-1 rounded-full surface px-2.5 py-1 text-xs text-body hover:text-heading transition-colors min-h-[44px]"
-            >
-              <LucideIcon name={child.icon} className="h-3.5 w-3.5 shrink-0 text-fairy-400" aria-hidden="true" />
-              {child.name}
-            </Link>
-          ))}
+        <div className="mt-3 border-t border-[var(--border-secondary)] pt-3">
+          <div className="flex flex-wrap gap-1.5">
+            {childRooms.map(child => {
+              const isExpanded = expandedChildren.has(child.name)
+              return (
+                <button
+                  key={child.name}
+                  onClick={() => onToggleChild(child.name)}
+                  aria-expanded={isExpanded}
+                  className={cn(
+                    'flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors min-h-[44px]',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                    isExpanded
+                      ? 'bg-fairy-500/15 text-fairy-400'
+                      : 'surface text-body hover:text-heading',
+                  )}
+                >
+                  <LucideIcon name={child.icon} className="h-3.5 w-3.5 shrink-0 text-fairy-400" aria-hidden="true" />
+                  {child.name}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Inline expanded child content */}
+          {childRooms.filter(c => expandedChildren.has(c.name)).map(child => {
+            const childScenes = scenes.filter(s => {
+              const rooms = Array.isArray(s.rooms) ? s.rooms : []
+              const modes = Array.isArray(s.modes) ? s.modes : []
+              const { inSeason } = isSceneInSeason(s)
+              if (!inSeason) return false
+              return (
+                rooms.some(r => r?.name === child.name) &&
+                modes.some(m => (m ?? '').toLowerCase() === currentMode.toLowerCase())
+              )
+            })
+            const childDefault = getDefaultScene(defaultScenes, child.name, currentMode)
+            const sortedChildScenes = [...childScenes].sort((a, b) => {
+              if (a.name === childDefault) return -1
+              if (b.name === childDefault) return 1
+              return a.name.localeCompare(b.name)
+            })
+
+            return (
+              <div key={child.name} className="mt-3 rounded-lg bg-[var(--bg-secondary)] p-3">
+                <div className="mb-2 flex items-center gap-1.5">
+                  <LucideIcon name={child.icon} className="h-3.5 w-3.5 text-fairy-400" aria-hidden="true" />
+                  <span className="text-xs font-medium text-heading">{child.name}</span>
+                </div>
+
+                {/* Child environmental indicators */}
+                <div className="text-body mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  {child.lux !== null && (() => {
+                    const { icon, className, label } = getLuxIcon(child.lux)
+                    return (
+                      <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                        <LucideIcon name={icon} className={cn('h-3.5 w-3.5', className)} aria-label={label} />
+                        {child.lux} lux
+                      </span>
+                    )
+                  })()}
+                  {child.temperature !== null && (
+                    <span className={cn('flex items-center gap-1', getTempColor(child.temperature))}>
+                      <Thermometer className="h-3.5 w-3.5" />
+                      {Math.round(child.temperature * 10) / 10}&deg;C
+                    </span>
+                  )}
+                  <span className={cn('flex items-center gap-1', getActivityColor(child.last_active))}>
+                    <Footprints className="h-3 w-3" />
+                    {formatTimeAgo(child.last_active)}
+                  </span>
+                </div>
+
+                {/* Child scene buttons */}
+                {sortedChildScenes.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {sortedChildScenes.map(scene => {
+                      const isActive = child.current_scene === scene.name
+                      const isDefault = scene.name === childDefault
+                      return (
+                        <button
+                          key={scene.name}
+                          onClick={() => onToggleScene(scene.name, isActive)}
+                          aria-pressed={isActive}
+                          className={cn(
+                            'flex min-h-[44px] items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+                            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                            isActive
+                              ? 'bg-fairy-500/20 text-fairy-700 dark:text-fairy-300'
+                              : 'surface text-body hover:brightness-95 dark:hover:brightness-110',
+                          )}
+                        >
+                          {isDefault && (
+                            <Activity className="h-3 w-3 text-fairy-400" aria-label="Default scene for this mode" />
+                          )}
+                          {scene.icon && <span className="text-sm" aria-hidden="true">{scene.icon}</span>}
+                          {scene.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-caption">No scenes for this mode</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -729,6 +830,16 @@ export default function HomePage() {
   const { toast } = useToast()
   const [reorderOpen, setReorderOpen] = useState(false)
   const [sectionEditorOpen, setSectionEditorOpen] = useState(false)
+  const [expandedChildren, setExpandedChildren] = usePersistedState<Set<string>>('home:expandedChildren', new Set())
+
+  function toggleChild(name: string) {
+    setExpandedChildren(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   const { data: rooms, isLoading: roomsLoading, isError: roomsError, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms'],
@@ -970,6 +1081,8 @@ export default function HomePage() {
                         toggleAutoMutation.mutate({ name: room.name, auto: !room.auto })
                       }
                       isLocked={nightStatus?.lockedRooms.includes(room.name)}
+                      expandedChildren={expandedChildren}
+                      onToggleChild={toggleChild}
                     />
                   ))}
               </div>
