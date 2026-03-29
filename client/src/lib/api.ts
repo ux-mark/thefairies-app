@@ -616,9 +616,14 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       headers: { 'Content-Type': 'application/json', ...options?.headers },
+      credentials: 'include',
       ...options,
       signal: options?.signal ?? controller.signal,
     })
+    if (res.status === 401) {
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       throw new Error(text || `API error: ${res.status}`)

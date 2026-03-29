@@ -28,6 +28,9 @@ import { notificationService } from './lib/notification-service.js'
 import { startKasaPoller, stopKasaPoller } from './lib/kasa-poller.js'
 import { sonosManager } from './lib/sonos-manager.js'
 import { setSocketServer } from './lib/socket.js'
+import { auth } from './lib/auth.js'
+import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
+import { requireAuth } from './middleware/requireAuth.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -74,27 +77,31 @@ initDb()
 
 const app = express()
 
-app.use(cors({ origin: CORS_ORIGIN }))
+app.use(cors({ origin: CORS_ORIGIN, credentials: true }))
+
+// Better Auth handler — must be before express.json() as it parses its own body
+app.all('/api/auth/{*splat}', toNodeHandler(auth))
+
 app.use(express.json({ limit: '100kb' }))
 
 const httpServer = createServer(app)
 const io = new SocketServer(httpServer, {
-  cors: { origin: CORS_ORIGIN },
+  cors: { origin: CORS_ORIGIN, credentials: true },
 })
 setSocketServer(io)
 
-// Mount API routes
-app.use('/api/lifx', lifxRoutes)
-app.use('/api/rooms', roomsRoutes)
-app.use('/api/scenes', scenesRoutes)
-app.use('/api/lights', lightsRoutes)
-app.use('/api/system', systemRoutes)
-app.use('/api/hubitat', hubitatRoutes)
-app.use('/api/motion', motionRoutes)
-app.use('/api/dashboard', dashboardRoutes)
-app.use('/api/kasa', kasaRoutes)
-app.use('/api/sonos', sonosRoutes)
-app.use('/api/device-links', deviceLinksRoutes)
+// Mount API routes (all require authentication)
+app.use('/api/lifx', requireAuth, lifxRoutes)
+app.use('/api/rooms', requireAuth, roomsRoutes)
+app.use('/api/scenes', requireAuth, scenesRoutes)
+app.use('/api/lights', requireAuth, lightsRoutes)
+app.use('/api/system', requireAuth, systemRoutes)
+app.use('/api/hubitat', requireAuth, hubitatRoutes)
+app.use('/api/motion', requireAuth, motionRoutes)
+app.use('/api/dashboard', requireAuth, dashboardRoutes)
+app.use('/api/kasa', requireAuth, kasaRoutes)
+app.use('/api/sonos', requireAuth, sonosRoutes)
+app.use('/api/device-links', requireAuth, deviceLinksRoutes)
 
 // Hubitat webhook handler
 app.post('/hubitat', async (req, res) => {
@@ -285,6 +292,23 @@ app.use(express.static(clientDist))
 // Express 5 requires named wildcard parameter syntax
 app.get('{*path}', (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'))
+})
+
+// Socket.io authentication middleware
+io.use(async (socket, next) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(socket.request.headers as any),
+    })
+    if (!session) {
+      next(new Error('Unauthorized'))
+      return
+    }
+    ;(socket as any).user = session.user
+    next()
+  } catch {
+    next(new Error('Unauthorized'))
+  }
 })
 
 // Socket.io connection handling
