@@ -504,23 +504,28 @@ function MtaCard() {
       }, null)
     : null
 
-  const accordionTitle: React.ReactNode = (
-    <span className="flex items-center gap-2 min-w-0">
+  const accordionTitle: React.ReactNode = soonestStop?.catchableTrain ? (
+    <span className="inline-flex items-center gap-1.5 min-w-0 flex-wrap">
       <span
-        className="h-3 w-3 flex-shrink-0 rounded-full"
+        className="h-3 w-3 shrink-0 rounded-full"
         style={{ backgroundColor: overallColor }}
         aria-hidden="true"
       />
-      {soonestStop?.catchableTrain ? (
-        <span className="flex items-center gap-1.5 min-w-0 flex-wrap">
-          <MtaLineBadge line={soonestStop.catchableTrain.routeId} />
-          {soonestStop.config.direction === 'N'
-            ? <ArrowUp className="h-3.5 w-3.5 shrink-0 text-caption" aria-label="Uptown" />
-            : <ArrowDown className="h-3.5 w-3.5 shrink-0 text-caption" aria-label="Downtown" />
-          }
-          <span>at {soonestStop.config.name} in {soonestStop.catchableTrain.minutesAway} min</span>
-        </span>
-      ) : combinedStatus.overallStatus === 'red'
+      <MtaLineBadge line={soonestStop.catchableTrain.routeId} />
+      {soonestStop.config.direction === 'N'
+        ? <ArrowUp className="h-3.5 w-3.5 shrink-0 text-caption" aria-label="Uptown" />
+        : <ArrowDown className="h-3.5 w-3.5 shrink-0 text-caption" aria-label="Downtown" />
+      }
+      <span>at {soonestStop.config.name} in {soonestStop.catchableTrain.minutesAway} min</span>
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <span
+        className="h-3 w-3 shrink-0 rounded-full"
+        style={{ backgroundColor: overallColor }}
+        aria-hidden="true"
+      />
+      {combinedStatus.overallStatus === 'red'
         ? 'Nothing catchable right now'
         : combinedStatus.overallMessage
       }
@@ -580,7 +585,7 @@ function MtaCard() {
                 <DirArrow className="h-3.5 w-3.5 shrink-0 text-caption" aria-label={dirLabel} />
                 {/* Station name + message inline, wrapping */}
                 <p className="min-w-0 flex-1 text-heading font-medium leading-snug">
-                  {stop.config.name} {message && <span className="font-normal text-caption text-xs">{message}</span>}
+                  {stop.config.name} {message && <span className="font-normal text-body text-xs">{message}</span>}
                 </p>
               </div>
             )
