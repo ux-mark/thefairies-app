@@ -146,6 +146,7 @@ interface RoomAccordionProps {
   roomIconMap: Record<string, string | null>
   isOpen: boolean
   onToggle: () => void
+  compact?: boolean
 }
 
 function RoomAccordion({
@@ -160,6 +161,7 @@ function RoomAccordion({
   roomIconMap,
   isOpen,
   onToggle,
+  compact,
 }: RoomAccordionProps) {
   const [activeMode, setActiveMode] = useState<string>('All')
 
@@ -196,7 +198,7 @@ function RoomAccordion({
 
   const accordionTitle = (
     <span className="flex items-center gap-1.5">
-      <LucideIcon name={roomIcon} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
+      <LucideIcon name={roomIcon} className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4', 'shrink-0 text-fairy-400')} aria-hidden="true" />
       {roomName}
     </span>
   )
@@ -207,6 +209,7 @@ function RoomAccordion({
       title={accordionTitle}
       open={isOpen}
       onToggle={onToggle}
+      card={!compact}
       count={sceneCount}
       trailing={
         hasActiveScene ? (
@@ -840,7 +843,7 @@ export default function ScenesPage() {
                         if (search.trim() && !childHasScenes) return null
 
                         return (
-                          <div key={childName} className="ml-2 mt-2 border-l-2 border-fairy-500/20 pl-2">
+                          <div key={childName} className="ml-2 mt-1">
                             <RoomAccordion
                               roomName={childName}
                               roomIcon={roomIconMap[childName]}
@@ -853,6 +856,7 @@ export default function ScenesPage() {
                               roomIconMap={roomIconMap}
                               isOpen={computedOpenRooms.has(childName)}
                               onToggle={() => toggleRoom(childName)}
+                              compact
                             />
                           </div>
                         )

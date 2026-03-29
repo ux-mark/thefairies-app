@@ -1238,9 +1238,10 @@ export default function DevicesPage() {
                     count={totalCount}
                   >
                     {childEntries.map(([childName, childDevices]) => (
-                      <div key={childName} className="ml-2 mt-2 border-l-2 border-fairy-500/20 pl-2">
+                      <div key={childName} className="ml-2 mt-1">
                         <Accordion
                           id={`devices-${childName.replace(/\s+/g, '-').toLowerCase()}`}
+                          card={false}
                           title={
                             <span className="flex items-center gap-1.5">
                               <LucideIcon name={roomIconMap[childName] ?? null} className="h-3.5 w-3.5 shrink-0 text-fairy-400" aria-hidden="true" />
