@@ -269,6 +269,93 @@ function RoomAccordion({
 }
 
 // ---------------------------------------------------------------------------
+// Room accordion content (used inside parent accordion when room has children)
+// ---------------------------------------------------------------------------
+
+function RoomAccordionContent({
+  roomName,
+  allScenes,
+  filteredScenes,
+  activeSceneNames,
+  defaultScenes,
+  systemModes,
+  modeIcons,
+  roomIconMap,
+}: Omit<RoomAccordionProps, 'roomIcon' | 'isOpen' | 'onToggle'>) {
+  const [activeMode, setActiveMode] = useState<string>('All')
+
+  const allModes = useMemo(
+    () => getModesForRoom(allScenes, roomName, systemModes),
+    [allScenes, roomName, systemModes],
+  )
+
+  const displayScenes = useMemo(() => {
+    const inRoom = filteredScenes.filter(s =>
+      (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === roomName),
+    )
+    const byMode =
+      activeMode === 'All'
+        ? inRoom
+        : inRoom.filter(s =>
+            (Array.isArray(s.modes) ? s.modes : []).some(
+              m => (m ?? '').toLowerCase() === activeMode.toLowerCase(),
+            ),
+          )
+    return [...byMode].sort((a, b) => a.name.localeCompare(b.name))
+  }, [filteredScenes, roomName, activeMode])
+
+  return (
+    <div>
+      {allModes.length > 0 && (
+        <div
+          className="flex flex-wrap gap-1.5 mb-2"
+          role="group"
+          aria-label="Filter by mode"
+        >
+          <FilterChip
+            label="All"
+            active={activeMode === 'All'}
+            onClick={() => setActiveMode('All')}
+          />
+          {allModes.map(mode => (
+            <FilterChip
+              key={mode}
+              label={mode}
+              active={activeMode === mode}
+              onClick={() => setActiveMode(mode)}
+              icon={modeIcons?.[mode] ?? null}
+            />
+          ))}
+        </div>
+      )}
+
+      {displayScenes.length > 0 ? (
+        displayScenes.map(scene => {
+          const defaultSceneName =
+            activeMode !== 'All'
+              ? getDefaultScene(defaultScenes, roomName, activeMode)
+              : null
+          const isDefault = defaultSceneName === scene.name
+          return (
+            <SceneRow
+              key={scene.name}
+              scene={scene}
+              isActive={activeSceneNames.has(scene.name)}
+              isDefault={isDefault}
+              roomIconMap={roomIconMap}
+            />
+          )
+        })
+      ) : (
+        <p className="text-caption py-4 text-sm">
+          No scenes match the selected filter.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Flat scene list row (for Active / Recent / Stale views)
 // ---------------------------------------------------------------------------
 
@@ -417,6 +504,44 @@ export default function ScenesPage() {
     }
     return names
   }, [scenes, rooms])
+
+  // Room hierarchy: map parent room name → child room names (that have scenes)
+  const roomMap = useMemo(() => {
+    const map = new Map<string, import('@/lib/api').Room>()
+    for (const r of rooms ?? []) map.set(r.name, r)
+    return map
+  }, [rooms])
+
+  const { topLevelRoomNames, childrenOfRoom } = useMemo(() => {
+    const childrenOf = new Map<string, string[]>()
+    const topLevel: string[] = []
+
+    for (const name of allRoomNames) {
+      const parentName = roomMap.get(name)?.parent_room
+      if (parentName) {
+        if (!childrenOf.has(parentName)) childrenOf.set(parentName, [])
+        childrenOf.get(parentName)!.push(name)
+      } else {
+        topLevel.push(name)
+      }
+    }
+
+    // Add parent rooms that have children with scenes but no scenes of their own
+    const topLevelSet = new Set(topLevel)
+    for (const parentName of childrenOf.keys()) {
+      if (!topLevelSet.has(parentName)) {
+        topLevel.push(parentName)
+      }
+    }
+
+    // Re-sort top-level by display_order
+    if (rooms) {
+      const orderMap = new Map(rooms.map(r => [r.name, r.display_order]))
+      topLevel.sort((a, b) => (orderMap.get(a) ?? 999) - (orderMap.get(b) ?? 999))
+    }
+
+    return { topLevelRoomNames: topLevel, childrenOfRoom: childrenOf }
+  }, [allRoomNames, roomMap, rooms])
 
   // When search is active, auto-expand rooms that have matching scenes
   const computedOpenRooms = useMemo(() => {
@@ -645,28 +770,105 @@ export default function ScenesPage() {
               />
             ) : (
               <>
-                {allRoomNames.map(roomName => {
-                  // Skip rooms that have no scenes in the filtered set (when searching)
-                  const hasFilteredScenes = filteredScenes.some(s =>
+                {topLevelRoomNames.map(roomName => {
+                  const childNames = childrenOfRoom.get(roomName) ?? []
+
+                  // Check if this room or any of its children have filtered scenes
+                  const hasOwnScenes = filteredScenes.some(s =>
                     (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === roomName),
                   )
-                  if (search.trim() && !hasFilteredScenes) return null
+                  const hasChildScenes = childNames.some(cn =>
+                    filteredScenes.some(s =>
+                      (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === cn),
+                    ),
+                  )
+                  if (search.trim() && !hasOwnScenes && !hasChildScenes) return null
+
+                  // No children — render a plain RoomAccordion as before
+                  if (childNames.length === 0) {
+                    return (
+                      <RoomAccordion
+                        key={roomName}
+                        roomName={roomName}
+                        roomIcon={roomIconMap[roomName]}
+                        allScenes={scenes}
+                        filteredScenes={filteredScenes}
+                        activeSceneNames={activeSceneNames}
+                        defaultScenes={defaultScenes}
+                        systemModes={systemCurrent?.all_modes}
+                        modeIcons={systemCurrent?.mode_icons}
+                        roomIconMap={roomIconMap}
+                        isOpen={computedOpenRooms.has(roomName)}
+                        onToggle={() => toggleRoom(roomName)}
+                      />
+                    )
+                  }
+
+                  // Has children — render parent accordion with nested child accordions
+                  const parentSceneCount = filteredScenes.filter(s =>
+                    (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === roomName),
+                  ).length
+                  const childSceneCount = childNames.reduce((sum, cn) =>
+                    sum + filteredScenes.filter(s =>
+                      (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === cn),
+                    ).length, 0,
+                  )
+                  const totalCount = parentSceneCount + childSceneCount
 
                   return (
-                    <RoomAccordion
+                    <Accordion
                       key={roomName}
-                      roomName={roomName}
-                      roomIcon={roomIconMap[roomName]}
-                      allScenes={scenes}
-                      filteredScenes={filteredScenes}
-                      activeSceneNames={activeSceneNames}
-                      defaultScenes={defaultScenes}
-                      systemModes={systemCurrent?.all_modes}
-                      modeIcons={systemCurrent?.mode_icons}
-                      roomIconMap={roomIconMap}
-                      isOpen={computedOpenRooms.has(roomName)}
+                      id={`room-${roomName.replace(/\s+/g, '-').toLowerCase()}`}
+                      title={
+                        <span className="flex items-center gap-1.5">
+                          <LucideIcon name={roomIconMap[roomName]} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
+                          {roomName}
+                        </span>
+                      }
+                      open={computedOpenRooms.has(roomName)}
                       onToggle={() => toggleRoom(roomName)}
-                    />
+                      count={totalCount}
+                    >
+                      {/* Parent room's own scenes */}
+                      {hasOwnScenes && (
+                        <RoomAccordionContent
+                          roomName={roomName}
+                          allScenes={scenes}
+                          filteredScenes={filteredScenes}
+                          activeSceneNames={activeSceneNames}
+                          defaultScenes={defaultScenes}
+                          systemModes={systemCurrent?.all_modes}
+                          modeIcons={systemCurrent?.mode_icons}
+                          roomIconMap={roomIconMap}
+                        />
+                      )}
+
+                      {/* Child room sub-accordions */}
+                      {childNames.map(childName => {
+                        const childHasScenes = filteredScenes.some(s =>
+                          (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === childName),
+                        )
+                        if (search.trim() && !childHasScenes) return null
+
+                        return (
+                          <div key={childName} className="ml-4 mt-2 border-l-2 border-fairy-500/20 pl-2">
+                            <RoomAccordion
+                              roomName={childName}
+                              roomIcon={roomIconMap[childName]}
+                              allScenes={scenes}
+                              filteredScenes={filteredScenes}
+                              activeSceneNames={activeSceneNames}
+                              defaultScenes={defaultScenes}
+                              systemModes={systemCurrent?.all_modes}
+                              modeIcons={systemCurrent?.mode_icons}
+                              roomIconMap={roomIconMap}
+                              isOpen={computedOpenRooms.has(childName)}
+                              onToggle={() => toggleRoom(childName)}
+                            />
+                          </div>
+                        )
+                      })}
+                    </Accordion>
                   )
                 })}
 
