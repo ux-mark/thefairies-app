@@ -5,7 +5,6 @@ import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { api } from '@/lib/api'
 import { cn, formatTimeAgo, DEFAULT_MODES } from '@/lib/utils'
 import { useToast } from '@/hooks/useToast'
-import { usePersistedState } from '@/hooks/usePersistedState'
 import type { Room, Scene } from '@/lib/api'
 import { getDefaultScene, isSceneInSeason } from '@/lib/scene-utils'
 import DeviceOnboarding from '@/components/ui/DeviceOnboarding'
@@ -832,7 +831,7 @@ export default function HomePage() {
   const { toast } = useToast()
   const [reorderOpen, setReorderOpen] = useState(false)
   const [sectionEditorOpen, setSectionEditorOpen] = useState(false)
-  const [expandedChildren, setExpandedChildren] = usePersistedState<Set<string>>('home:expandedChildren', new Set())
+  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set())
 
   function toggleChild(name: string) {
     setExpandedChildren(prev => {
