@@ -570,6 +570,7 @@ export default function RoomDetailPage() {
   const [timer, setTimer] = useState<number | null>(null)
   const [autoEnabled, setAutoEnabled] = useState<boolean | null>(null)
   const [parentRoom, setParentRoom] = useState<string | null>(null)
+  const [promoted, setPromoted] = useState<boolean | null>(null)
   const [sensors, setSensors] = useState<Sensor[] | null>(null)
   const [_roomNameEdit, _setRoomNameEdit] = useState<string | null>(null)
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
@@ -579,6 +580,7 @@ export default function RoomDetailPage() {
   const effectiveTimer = timer ?? room?.timer ?? 0
   const effectiveAuto = autoEnabled ?? room?.auto ?? false
   const effectiveParent = parentRoom ?? room?.parent_room ?? ''
+  const effectivePromoted = promoted ?? room?.promoted ?? false
   const effectiveSensors = (sensors ?? room?.sensors ?? []).map(s => {
     // Resolve current name from hub devices (handles renamed sensors)
     if (s.id && allHubDevices) {
@@ -849,9 +851,16 @@ export default function RoomDetailPage() {
     return parts.length > 0 ? parts.join(', ') : 'No matches'
   }, [deviceSearch, filteredAssignedDevices, filteredAvailableDevicesByType])
 
-  // Other rooms for parent selector (exclude self)
+  // Other rooms for parent selector (exclude self and rooms that already have a parent)
   const parentRoomOptions = useMemo(() => {
-    return (allRooms ?? []).filter(r => r.name !== name)
+    return (allRooms ?? []).filter(r => r.name !== name && !r.parent_room)
+  }, [allRooms, name])
+
+  // Rooms that have this room as their parent
+  const childRooms = useMemo(() => {
+    return (allRooms ?? [])
+      .filter(r => r.parent_room === name)
+      .sort((a, b) => a.display_order - b.display_order)
   }, [allRooms, name])
 
   // Sonos setting mutations — these save immediately (not batched with room save)
@@ -943,6 +952,7 @@ export default function RoomDetailPage() {
         timer: effectiveTimer,
         auto: effectiveAuto,
         parent_room: effectiveParent,
+        promoted: effectivePromoted,
       })
       // Save light assignments
       await api.lights.saveForRoom(name!, effectiveAssigned)
@@ -1017,6 +1027,8 @@ export default function RoomDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['lights', 'rooms'] })
       queryClient.invalidateQueries({ queryKey: ['hubitat', 'device-rooms'] })
       setDirty(false)
+      setPromoted(null)
+      setParentRoom(null)
       setPendingDeviceAssigns([])
       setPendingDeviceUnassigns([])
       setPendingDeviceConfigs({})
@@ -1266,6 +1278,20 @@ export default function RoomDetailPage() {
       <div className="mb-6">
         <BackLink to="/rooms" label="All Rooms" className="mb-3" />
 
+        {/* Breadcrumb — shown when this room has a parent */}
+        {room?.parent_room && (
+          <div className="mb-1 flex items-center gap-1.5 text-xs">
+            <Link
+              to={`/rooms/${encodeURIComponent(room.parent_room)}`}
+              className="text-fairy-400 hover:text-fairy-300 transition-colors"
+            >
+              {room.parent_room}
+            </Link>
+            <ChevronRight className="h-3 w-3 text-caption" aria-hidden="true" />
+            <span className="text-caption">{room.name}</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           {/* Room icon — click to change, or show add-icon button if none set */}
           <div className="relative">
@@ -1328,6 +1354,57 @@ export default function RoomDetailPage() {
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {/* Promote to homepage toggle — only shown when a parent room is set */}
+        {effectiveParent && (
+          <div className="mt-2 flex items-center gap-2 min-h-[44px]">
+            <label className="text-xs font-medium text-caption" htmlFor="promoted-toggle">
+              Show on homepage
+            </label>
+            <button
+              id="promoted-toggle"
+              role="switch"
+              aria-checked={effectivePromoted}
+              onClick={() => { setPromoted(!effectivePromoted); markDirty() }}
+              className={cn(
+                'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors min-h-[44px] min-w-[44px] items-center justify-center',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fairy-500',
+                effectivePromoted ? 'bg-fairy-500' : 'bg-slate-600',
+              )}
+            >
+              <span
+                className={cn(
+                  'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform mt-0.5',
+                  effectivePromoted ? 'translate-x-4.5 ml-0' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+        )}
+
+        {/* Sub-spaces — shown when other rooms list this room as their parent */}
+        {childRooms.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-xs font-medium text-caption mb-2">Sub-spaces</h4>
+            <div className="space-y-1.5">
+              {childRooms.map(child => (
+                <Link
+                  key={child.name}
+                  to={`/rooms/${encodeURIComponent(child.name)}`}
+                  className="flex items-center justify-between rounded-lg surface px-3 py-2 text-sm hover:brightness-110 transition-all min-h-[44px]"
+                >
+                  <span className="flex items-center gap-2">
+                    <LucideIcon name={child.icon} className="h-4 w-4 text-fairy-400" aria-hidden="true" />
+                    <span className="text-heading">{child.name}</span>
+                  </span>
+                  <span className="text-caption text-xs">
+                    {child.promoted ? 'On homepage' : 'Sub-space only'}
+                  </span>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>

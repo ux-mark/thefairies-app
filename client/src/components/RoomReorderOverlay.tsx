@@ -167,7 +167,9 @@ export default function RoomReorderOverlay({ rooms, open, onClose }: RoomReorder
   // remounts and its useState re-initialises from the latest sorted rooms.
   const sessionKey = useOverlaySessionKey(open)
 
-  const sortedRooms = [...rooms].sort((a, b) => a.display_order - b.display_order)
+  const sortedRooms = [...rooms]
+    .filter(r => !r.parent_room || r.promoted)
+    .sort((a, b) => a.display_order - b.display_order)
 
   const saveMutation = useMutation({
     mutationFn: (reorderedRooms: Room[]) => {

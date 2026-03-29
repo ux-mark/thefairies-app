@@ -95,6 +95,7 @@ function ModeSelector({
 
 function RoomCard({
   room,
+  allRooms,
   scenes,
   currentMode,
   defaultScenes,
@@ -103,6 +104,7 @@ function RoomCard({
   isLocked,
 }: {
   room: Room
+  allRooms: Room[]
   scenes: Scene[]
   currentMode: string
   defaultScenes: Record<string, Record<string, string>> | undefined
@@ -110,6 +112,12 @@ function RoomCard({
   onToggleAuto: () => void
   isLocked?: boolean
 }) {
+  const childRooms = allRooms
+    .filter(r => r.parent_room === room.name && !r.promoted)
+    .sort((a, b) => a.display_order - b.display_order)
+  const parentRoom = room.parent_room
+    ? allRooms.find(r => r.name === room.parent_room) ?? null
+    : null
   // Show ALL scenes for room + mode, in season
   const roomScenes = scenes.filter(s => {
     const rooms = Array.isArray(s.rooms) ? s.rooms : []
@@ -136,9 +144,20 @@ function RoomCard({
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-2">
           <LucideIcon name={room.icon} className="h-4 w-4 shrink-0 text-fairy-400" aria-hidden="true" />
-          <h3 className="text-heading text-base font-semibold">
-            {room.name}
-          </h3>
+          <div>
+            <h3 className="text-heading text-base font-semibold">
+              {room.name}
+            </h3>
+            {room.parent_room && room.promoted && parentRoom && (
+              <Link
+                to={`/rooms/${encodeURIComponent(room.parent_room)}`}
+                className="text-xs text-fairy-400 hover:text-fairy-300 transition-colors"
+                aria-label={`Part of ${room.parent_room}`}
+              >
+                in {room.parent_room}
+              </Link>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           {isLocked && (
@@ -210,6 +229,22 @@ function RoomCard({
               </button>
             )
           })}
+        </div>
+      )}
+
+      {/* Sub-spaces chip shelf */}
+      {childRooms.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[var(--border-secondary)] pt-3">
+          {childRooms.map(child => (
+            <Link
+              key={child.name}
+              to={`/rooms/${encodeURIComponent(child.name)}`}
+              className="flex items-center gap-1 rounded-full surface px-2.5 py-1 text-xs text-body hover:text-heading transition-colors min-h-[44px]"
+            >
+              <LucideIcon name={child.icon} className="h-3.5 w-3.5 shrink-0 text-fairy-400" aria-hidden="true" />
+              {child.name}
+            </Link>
+          ))}
         </div>
       )}
     </div>
@@ -884,7 +919,7 @@ export default function HomePage() {
               {rooms && (
                 <div className="flex items-center gap-2">
                   <span className="text-caption text-xs">
-                    {rooms.length} room{rooms.length !== 1 ? 's' : ''}
+                    {rooms.filter(r => !r.parent_room || r.promoted).length} room{rooms.filter(r => !r.parent_room || r.promoted).length !== 1 ? 's' : ''}
                   </span>
                   <button
                     onClick={() => setReorderOpen(true)}
@@ -916,11 +951,13 @@ export default function HomePage() {
             ) : rooms && rooms.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {rooms
+                  .filter(room => !room.parent_room || room.promoted)
                   .sort((a, b) => a.display_order - b.display_order)
                   .map(room => (
                     <RoomCard
                       key={room.name}
                       room={room}
+                      allRooms={rooms}
                       scenes={scenes ?? []}
                       currentMode={currentMode}
                       defaultScenes={defaultScenes}

@@ -31,7 +31,8 @@ export interface LightState {
 export interface Room {
   name: string
   display_order: number
-  parent_room: string
+  parent_room: string | null
+  promoted: boolean
   auto: boolean
   timer: number
   sensors: Sensor[]

@@ -20,6 +20,7 @@ export function initDb(): void {
       name TEXT PRIMARY KEY,
       display_order INTEGER DEFAULT 0,
       parent_room TEXT,
+      promoted INTEGER DEFAULT 0,
       auto INTEGER DEFAULT 1,
       timer INTEGER DEFAULT 15,
       tags TEXT DEFAULT '[]',
@@ -275,6 +276,9 @@ export function initDb(): void {
   }
   if (!colNames.includes('icon')) {
     db.exec('ALTER TABLE rooms ADD COLUMN icon TEXT DEFAULT NULL')
+  }
+  if (!colNames.includes('promoted')) {
+    db.exec('ALTER TABLE rooms ADD COLUMN promoted INTEGER DEFAULT 0')
   }
 
   // Add active column to tables that need device deactivation support (existing DBs)
