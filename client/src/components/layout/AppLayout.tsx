@@ -93,6 +93,12 @@ export default function AppLayout() {
             </h2>
           </div>
           <div className="flex items-center gap-2">
+            {system?.mode && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-fairy-500/15 px-2.5 py-0.5 text-xs font-medium text-fairy-400 md:hidden">
+                <LucideIcon name={system.mode_icons?.[system.mode] ?? null} className="h-3.5 w-3.5" aria-hidden="true" />
+                {system.mode}
+              </span>
+            )}
             <NotificationBell />
             <NavLink
               to="/settings"
@@ -109,12 +115,6 @@ export default function AppLayout() {
             >
               <Settings className="h-5 w-5" />
             </NavLink>
-            {system?.mode && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-fairy-500/15 px-2.5 py-0.5 text-xs font-medium text-fairy-400 md:hidden">
-                <LucideIcon name={system.mode_icons?.[system.mode] ?? null} className="h-3.5 w-3.5" aria-hidden="true" />
-                {system.mode}
-              </span>
-            )}
           </div>
         </header>
 

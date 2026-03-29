@@ -31,7 +31,8 @@ export interface LightState {
 export interface Room {
   name: string
   display_order: number
-  parent_room: string
+  parent_room: string | null
+  promoted: boolean
   auto: boolean
   timer: number
   sensors: Sensor[]
@@ -340,12 +341,13 @@ export interface BatteryDevice {
 }
 
 export interface PowerDevice {
-  id: number
+  id: string | number
   label: string
   room_name: string | null
   power: number
   energy: number | null
   switch: 'on' | 'off'
+  source: 'hub' | 'kasa'
 }
 
 export interface DashboardSummary {
@@ -394,7 +396,7 @@ export interface RoomIntelligenceData {
   temperatureHistory: Array<{ value: number; recorded_at: string }>
   totalWatts: number
   devices: Array<{
-    id: number; label: string; device_type: string
+    id: string; label: string; device_type: string; source: 'hub' | 'kasa'
     power: number; energy: number | null; battery: number | null
   }>
   events24h: number
@@ -428,7 +430,7 @@ export interface DeviceInsightsData {
       avgTemp30d: number | null
     } | null
   }
-  roomDevices: Array<{ id: number; label: string; device_type: string }>
+  roomDevices: Array<{ id: string; label: string; device_type: string; source: 'hub' | 'kasa' }>
   currencySymbol: string
 }
 
@@ -780,6 +782,8 @@ export const api = {
       fetchApi<unknown>('/rooms/' + encodeURIComponent(name), {
         method: 'DELETE',
       }),
+    reorder: (items: Array<{name: string; display_order: number}>) =>
+      fetchApi<Room[]>('/rooms/reorder', { method: 'PUT', body: JSON.stringify(items) }),
   },
   scenes: {
     getAll: () => fetchApi<Scene[]>('/scenes'),
