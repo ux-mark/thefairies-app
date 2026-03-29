@@ -1196,11 +1196,14 @@ export default function DevicesPage() {
             const topLevelEntries: [string, UnifiedDevice[]][] = []
 
             for (const [group, devices] of allEntries) {
-              const parentName = roomMap.get(group)?.parent_room
-              if (parentName) {
+              const room = roomMap.get(group)
+              const parentName = room?.parent_room
+              if (parentName && !room?.promoted) {
+                // Non-promoted child — nest under parent
                 if (!childrenOf.has(parentName)) childrenOf.set(parentName, [])
                 childrenOf.get(parentName)!.push([group, devices])
               } else {
+                // Top-level room OR promoted child (gets its own accordion)
                 topLevelEntries.push([group, devices])
               }
             }
@@ -1234,11 +1237,6 @@ export default function DevicesPage() {
                     onToggle={() => toggleGroup(group)}
                     count={totalCount}
                   >
-                    {ownDevices.length > 0 && (
-                      <div className="space-y-2">
-                        {ownDevices.map(d => <DeviceCard key={d.key} device={d} rooms={rooms} />)}
-                      </div>
-                    )}
                     {childEntries.map(([childName, childDevices]) => (
                       <div key={childName} className="ml-4 mt-2 border-l-2 border-fairy-500/20 pl-2">
                         <Accordion
@@ -1259,6 +1257,11 @@ export default function DevicesPage() {
                         </Accordion>
                       </div>
                     ))}
+                    {ownDevices.length > 0 && (
+                      <div className="space-y-2">
+                        {ownDevices.map(d => <DeviceCard key={d.key} device={d} rooms={rooms} />)}
+                      </div>
+                    )}
                   </Accordion>
                 )
               })

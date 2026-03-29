@@ -517,11 +517,14 @@ export default function ScenesPage() {
     const topLevel: string[] = []
 
     for (const name of allRoomNames) {
-      const parentName = roomMap.get(name)?.parent_room
-      if (parentName) {
+      const room = roomMap.get(name)
+      const parentName = room?.parent_room
+      if (parentName && !room?.promoted) {
+        // Non-promoted child — nest under parent
         if (!childrenOf.has(parentName)) childrenOf.set(parentName, [])
         childrenOf.get(parentName)!.push(name)
       } else {
+        // Top-level room OR promoted child (gets its own accordion)
         topLevel.push(name)
       }
     }
@@ -829,21 +832,7 @@ export default function ScenesPage() {
                       onToggle={() => toggleRoom(roomName)}
                       count={totalCount}
                     >
-                      {/* Parent room's own scenes */}
-                      {hasOwnScenes && (
-                        <RoomAccordionContent
-                          roomName={roomName}
-                          allScenes={scenes}
-                          filteredScenes={filteredScenes}
-                          activeSceneNames={activeSceneNames}
-                          defaultScenes={defaultScenes}
-                          systemModes={systemCurrent?.all_modes}
-                          modeIcons={systemCurrent?.mode_icons}
-                          roomIconMap={roomIconMap}
-                        />
-                      )}
-
-                      {/* Child room sub-accordions */}
+                      {/* Child room sub-accordions (above parent's own scenes) */}
                       {childNames.map(childName => {
                         const childHasScenes = filteredScenes.some(s =>
                           (Array.isArray(s.rooms) ? s.rooms : []).some(r => r?.name === childName),
@@ -868,6 +857,20 @@ export default function ScenesPage() {
                           </div>
                         )
                       })}
+
+                      {/* Parent room's own scenes (below children) */}
+                      {hasOwnScenes && (
+                        <RoomAccordionContent
+                          roomName={roomName}
+                          allScenes={scenes}
+                          filteredScenes={filteredScenes}
+                          activeSceneNames={activeSceneNames}
+                          defaultScenes={defaultScenes}
+                          systemModes={systemCurrent?.all_modes}
+                          modeIcons={systemCurrent?.mode_icons}
+                          roomIconMap={roomIconMap}
+                        />
+                      )}
                     </Accordion>
                   )
                 })}
