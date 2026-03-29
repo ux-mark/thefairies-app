@@ -239,7 +239,7 @@ function RoomCard({
 
       {/* Sub-spaces — each child renders in place as either a pill or expanded content */}
       {childRooms.length > 0 && (
-        <div className="mt-3 space-y-1.5 border-t border-[var(--border-secondary)] pt-3">
+        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[var(--border-secondary)] pt-3">
           {childRooms.map(child => {
             const isExpanded = expandedChildren.has(child.name)
 
@@ -279,7 +279,7 @@ function RoomCard({
             })
 
             return (
-              <div key={child.name} className="rounded-lg bg-[var(--bg-secondary)] p-3">
+              <div key={child.name} className="w-full rounded-lg bg-[var(--bg-secondary)] p-3">
                 <button
                   onClick={() => onToggleChild(child.name)}
                   className="mb-2 flex items-center gap-1.5 min-h-[44px] text-left"
